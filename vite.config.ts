@@ -8,6 +8,7 @@ export default defineConfig(({mode}) => {
   const backendProxyTarget = env.VITE_BACKEND_PROXY_TARGET || process.env.VITE_BACKEND_PROXY_TARGET || 'http://127.0.0.1:8001';
 
   return {
+    base: '/zoneflow-boarding-simulation/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
