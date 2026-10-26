@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then
-            npm ci || npm install
+            npm ci
           else
             npm install
           fi
@@ -51,6 +51,8 @@ jobs:
         run: npx tsx src/simulation/engine.test.ts
 
       - name: Build frontend
+        env:
+          VITE_BASE_PATH: /zoneflow-boarding-simulation/
         run: npm run build
 
       - name: Upload artifact

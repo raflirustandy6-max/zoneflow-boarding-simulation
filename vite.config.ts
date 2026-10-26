@@ -6,13 +6,17 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   const backendProxyTarget = env.VITE_BACKEND_PROXY_TARGET || process.env.VITE_BACKEND_PROXY_TARGET || 'http://127.0.0.1:8001';
+  const basePath =
+    env.VITE_BASE_PATH ||
+    process.env.VITE_BASE_PATH ||
+    (process.env.GITHUB_ACTIONS === 'true' ? '/zoneflow-boarding-simulation/' : '/');
 
   return {
-    base: '/zoneflow-boarding-simulation/',
+    base: basePath,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {
