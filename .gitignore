@@ -1,0 +1,17 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+__pycache__/
+.playwright-cli/
+.env*
+!.env.example
+!backend/.env.example
+!**/.env.example
+!backend/Dockerfile
+!backend/Dockerfile.export.txt
+!docker-compose.yml
+!EXPORT_MANIFEST.md
+

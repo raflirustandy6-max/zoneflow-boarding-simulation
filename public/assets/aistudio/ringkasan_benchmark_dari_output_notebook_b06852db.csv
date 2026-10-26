@@ -1,0 +1,37 @@
+﻿baggage_percent,method,n,mean_minutes,std_minutes,rank_within_baggage
+50,Back-to-Front-WILMA,100,4.44,0.25,1.0
+50,Reverse Pyramid (approximation),100,4.637,0.262,2.0
+50,Exhaustive-Zone-WMA,100,4.815,0.269,3.0
+50,GA-Zone-WMA,100,4.815,0.269,3.0
+50,Fixed-Zone-WMA,100,4.866,0.27,5.0
+50,Back-to-Front,100,5.098,0.297,6.0
+50,Outside-In/WMA,100,5.15,0.279,7.0
+50,Modified Optimal (implementation variant),100,6.432,0.395,8.0
+50,Steffen (staggered-row implementation),100,7.059,0.406,9.0
+50,Random,100,11.982,0.909,10.0
+50,Rotating Zones,100,19.252,1.186,11.0
+50,Front-to-Back,100,52.824,1.928,12.0
+60,Back-to-Front-WILMA,100,4.645,0.255,1.0
+60,Reverse Pyramid (approximation),100,4.809,0.261,2.0
+60,Exhaustive-Zone-WMA,100,4.978,0.253,3.0
+60,GA-Zone-WMA,100,4.978,0.253,3.0
+60,Fixed-Zone-WMA,100,5.031,0.277,5.0
+60,Back-to-Front,100,5.321,0.272,6.0
+60,Outside-In/WMA,100,5.328,0.283,7.0
+60,Modified Optimal (implementation variant),100,6.793,0.39,8.0
+60,Steffen (staggered-row implementation),100,7.49,0.42,9.0
+60,Random,100,12.583,0.938,10.0
+60,Rotating Zones,100,21.603,1.418,11.0
+60,Front-to-Back,100,57.214,1.923,12.0
+70,Back-to-Front-WILMA,100,4.763,0.271,1.0
+70,Reverse Pyramid (approximation),100,4.95,0.277,2.0
+70,Exhaustive-Zone-WMA,100,5.124,0.268,3.0
+70,GA-Zone-WMA,100,5.124,0.268,3.0
+70,Fixed-Zone-WMA,100,5.151,0.285,5.0
+70,Back-to-Front,100,5.413,0.256,6.0
+70,Outside-In/WMA,100,5.45,0.283,7.0
+70,Modified Optimal (implementation variant),100,7.07,0.398,8.0
+70,Steffen (staggered-row implementation),100,7.736,0.384,9.0
+70,Random,100,13.064,0.888,10.0
+70,Rotating Zones,100,23.472,1.283,11.0
+70,Front-to-Back,100,61.606,2.008,12.0

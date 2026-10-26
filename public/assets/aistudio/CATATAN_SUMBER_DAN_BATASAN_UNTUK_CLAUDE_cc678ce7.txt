@@ -1,0 +1,34 @@
+CATATAN SUMBER DAN BATASAN UNTUK CLAUDE
+Proyek: prototipe simulasi boarding pesawat. AZBO adalah kerangka berpikir konseptual, bukan nama produk atau branding.
+
+1. FILE DAN STATUS
+- SimulasiLogikaUI_6_export_untuk_Claude.py: ekspor kode dari notebook; output sel tidak ikut disertakan.
+- Notebook asli SimulasiLogikaUI_6(1).ipynb: memiliki kode dan output tersimpan. Gunakan sebagai referensi bila antarmuka unggah mendukung format ini.
+- CSV inventaris metode, hasil studi, parameter, sumber literatur, dan kamus kolom: database rangkuman literatur, bukan data penumpang mentah.
+- PDF literatur dipisahkan menjadi dua bagian yang relevan; dokumen gabungan asli mengandung materi tidak relevan pada halaman PDF 1-9 (model kerusakan hutan) dan 128-201 (materi matriks matematika). Jangan gunakan bagian tersebut untuk boarding.
+- Gambar referensi dashboard: acuan visual frontend. Palet merek: #086288, #4D8DBA, #97D7FF, #FFEFC4.
+
+2. MODEL DI NOTEBOOK
+- Kabin model generik single-aisle 3-3: 30 baris, 6 kursi/baris, 180 kursi.
+- Level bagasi: 50%, 60%, 70%; 100 replikasi test per level.
+- Parameter WALK_PER_ROW_S=2.4 detik/baris dirujuk dari studi regional di PDF.
+- WEIBULL_SHAPE=1.7 dan WEIBULL_SCALE_S=16.0 detik merupakan baseline yang disebut dari literatur, tetapi belum dikalibrasi untuk seluruh tipe pesawat.
+- ENTRY_GAP_S=1.0, AISLE_HEADWAY_S=1.0, SIT_TIME_S=2.0 serta pemetaan seat-interference adalah asumsi implementasi tim yang perlu uji sensitivitas dan bukan data operasional terukur.
+- Penumpang dibangkitkan secara sintetis. Tidak ada dataset observasi mentah penumpang maskapai yang disertakan.
+
+3. HASIL YANG TERLIHAT PADA OUTPUT NOTEBOOK TERSIMPAN
+- Pada benchmark model yang tersimpan, Back-to-Front-WILMA memiliki rerata waktu paling rendah pada setiap level bagasi yang diuji: 4.440 menit (50%), 4.645 menit (60%), dan 4.763 menit (70%).
+- GA-Zone-WMA memiliki rerata 4.815, 4.978, dan 5.124 menit pada level yang sama; Exhaustive-Zone-WMA tertera sama karena keduanya memilih kromosom yang sama dalam ruang pencarian tersebut.
+- Pada batch training, GA memperoleh solusi sama dengan enumerasi menyeluruh dari 546 kandidat yang didefinisikan (91 pembagian zona x 6 urutan zona), tetapi hasil ini hanya berlaku pada ruang keputusan/fungsi objektif/batch pelatihan tersebut; ini bukan bukti GA adalah metode boarding terbaik secara umum.
+- Jangan membuat klaim bahwa GA-Zone-WMA mengungguli Back-to-Front-WILMA dalam benchmark notebook yang tersedia.
+
+4. KETERBATASAN PUSTAKA
+- PDF awal berisi beberapa studi dengan konteks berbeda: single-aisle, dua pintu/apron buses, dan BWB/multi-aisle. Jangan gabungkan hasil antarstudi sebagai angka yang langsung dapat dibandingkan.
+- Unit dan asumsi antarartikel berbeda (ticks, detik, menit, konfigurasi pesawat, bagasi, jumlah pintu).
+- Sumber SRC01 bertajuk "Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods" memiliki penanda PAPER ID: SITXXX; status publikasi/metadata final belum terkonfirmasi.
+- Dalam database literatur, hasil Airbus A320 dengan bagasi 70% dilaporkan dengan satuan yang tidak konsisten; jangan gunakan angka itu secara kuantitatif tanpa verifikasi sumber.
+- Beberapa implementasi metode pada notebook diberi label approximation/variant (mis. Reverse Pyramid, Steffen staggered-row, Modified Optimal). Jangan menyebutnya reproduksi metode asli yang tervalidasi tanpa pemeriksaan lebih lanjut.
+
+5. FILE HASIL
+- ringkasan_benchmark_dari_output_notebook.csv, perbandingan_berpasangan_GA_dari_output_notebook.csv, dan pemenang_per_tingkat_bagasi_dari_output_notebook.csv diambil dari tabel output yang tersimpan di notebook. Ini bukan hasil notebook yang baru dijalankan saat file ini dibuat.
+- Notebook berisi kode untuk mengekspor file rinci ke output_boarding_ga_v3, tetapi file keluaran mentah tersebut tidak termasuk dalam unggahan saat ini. Bila diperlukan untuk audit penuh, jalankan notebook di lingkungan aslinya dan unggah hasil ekspor seperti hasil_replikasi_benchmark.csv, riwayat_algoritma_genetika.csv, jejak_satu_replikasi_GA.csv, hasil_enumerasi_menyeluruh.csv, dan solusi_GA.json.

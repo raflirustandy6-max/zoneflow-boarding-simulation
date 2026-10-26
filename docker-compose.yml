@@ -1,0 +1,31 @@
+services:
+  zoneflow-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zoneflow-backend
+    ports:
+      - "8001:8001"
+    environment:
+      - ZONEFLOW_BACKEND_HOST=0.0.0.0
+      - ZONEFLOW_BACKEND_PORT=8001
+      - ZONEFLOW_CORS_ORIGINS=*
+      - ZONEFLOW_MAX_CONCURRENT_JOBS=2
+      - ZONEFLOW_MAX_RETAINED_JOBS=50
+    restart: unless-stopped
+
+  zoneflow-frontend:
+    image: node:20-alpine
+    container_name: zoneflow-frontend
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE_URL=/api/v1
+      - VITE_BACKEND_PROXY_TARGET=http://zoneflow-backend:8001
+    command: sh -c "npm install && npm run build && npm run preview -- --host 0.0.0.0 --port 3000"
+    depends_on:
+      - zoneflow-backend
+    restart: unless-stopped

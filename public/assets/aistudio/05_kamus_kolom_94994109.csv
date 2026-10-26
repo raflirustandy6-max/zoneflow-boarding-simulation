@@ -1,0 +1,15 @@
+﻿file_name,column_name,meaning
+inventaris_metode_boarding.csv,method_id,ID unik metode boarding di database.
+inventaris_metode_boarding.csv,method_name,Nama metode utama sesuai istilah sumber.
+inventaris_metode_boarding.csv,aliases,Nama alternatif/akronim sebagaimana digunakan dalam sumber.
+inventaris_metode_boarding.csv,method_type,Kategori metode; metode prioritas bagasi dan metode BWB ditandai khusus.
+inventaris_metode_boarding.csv,rule_from_pdf,Aturan yang dapat ditarik dari isi PDF.
+inventaris_metode_boarding.csv,group_or_sequence,Rincian pengelompokan atau urutan yang perlu diterapkan.
+inventaris_metode_boarding.csv,aircraft_scope_in_source,Jenis pesawat/konteks operasional yang benar-benar disebut dalam sumber.
+inventaris_metode_boarding.csv,evidence_summary,"Ringkasan temuan yang dinyatakan sumber, tidak digeneralisasi."
+inventaris_metode_boarding.csv,implementation_notes,Catatan implementasi dan risiko perbandingan tidak adil.
+inventaris_metode_boarding.csv,source_ids,ID sumber yang cocok pada sumber_literatur.csv; beberapa ID dipisahkan titik koma.
+hasil_studi.csv,result_id,ID unik hasil penelitian.
+hasil_studi.csv,metric/value/unit,"Metrik, nilai yang dilaporkan, dan satuan seperti yang tersurat dalam PDF; periksa kolom caveat."
+parameter_simulasi.csv,value_or_levels,Nilai tetap atau level yang disebut sumber; bukan otomatis nilai yang harus dipakai dalam model tim.
+sumber_literatur.csv,source_id,"Kunci sumber yang direferensikan dari tabel metode, hasil, dan parameter."

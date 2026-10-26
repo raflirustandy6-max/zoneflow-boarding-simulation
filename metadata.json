@@ -1,0 +1,8 @@
+{
+  "name": "ZoneFlow",
+  "description": "Interactive Aircraft Boarding Simulation & Analytics Dashboard for exploring boarding methods and baggage sensitivity.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
