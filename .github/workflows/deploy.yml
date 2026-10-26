@@ -22,16 +22,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Upgrade npm and print runtime versions
+        run: |
+          npm install --global npm@11.21.1
+          node --version
+          npm --version
+
       - name: Install dependencies
-        run: npm install
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Run frontend unit tests
+        run: npx tsx src/simulation/engine.test.ts
 
       - name: Build frontend
         run: npm run build
