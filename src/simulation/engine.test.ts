@@ -165,4 +165,12 @@ test('Pembatalan AbortSignal eksternal pada permintaan Batch Simulation', async 
   assert.ok(caughtErr.message.includes('dibatalkan oleh pengguna'));
 });
 
-
+test('Deteksi Content-Type JSON pada apiClient menolak fallback HTML statis', async () => {
+  const { isJsonContentType } = await import('../services/apiClient');
+  assert.equal(isJsonContentType('application/json'), true);
+  assert.equal(isJsonContentType('application/json; charset=utf-8'), true);
+  assert.equal(isJsonContentType('text/html; charset=utf-8'), false);
+  assert.equal(isJsonContentType('text/plain'), false);
+  assert.equal(isJsonContentType(null), false);
+  assert.equal(isJsonContentType(undefined), false);
+});

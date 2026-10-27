@@ -37,12 +37,7 @@ jobs:
           npm --version
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm ci
 
       - name: Lint frontend
         run: npm run lint
@@ -51,8 +46,6 @@ jobs:
         run: npx tsx src/simulation/engine.test.ts
 
       - name: Build frontend
-        env:
-          VITE_BASE_PATH: /zoneflow-boarding-simulation/
         run: npm run build
 
       - name: Upload artifact

@@ -59,10 +59,33 @@ export function normalizeApiBaseUrl(rawUrl?: string): string {
   return cleaned || "/api/v1";
 }
 
-const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const API_BASE_URL = normalizeApiBaseUrl(
+  typeof import.meta !== "undefined" && import.meta.env
+    ? import.meta.env.VITE_API_BASE_URL
+    : undefined
+);
 
 export function getConfiguredApiBaseUrl(): string {
   return API_BASE_URL;
+}
+
+export function isJsonContentType(contentType?: string | null): boolean {
+  if (!contentType) return false;
+  return contentType.toLowerCase().includes("application/json");
+}
+
+async function parseVerifiedJson<T>(res: Response, endpointDesc: string): Promise<T> {
+  const contentType = res.headers.get("content-type");
+  if (!isJsonContentType(contentType)) {
+    throw new Error(
+      `Layanan backend Python (${endpointDesc}) belum terhubung pada host publik ini (server mengembalikan halaman statis HTML, bukan respons JSON API).`
+    );
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new Error(`Respons dari ${endpointDesc} bukan format JSON yang valid.`);
+  }
 }
 
 /**
@@ -88,11 +111,37 @@ export async function checkBackendHealth(timeoutMs: number = 2500): Promise<{
       return { online: false, info: null, error: `HTTP ${res.status}: ${res.statusText}` };
     }
 
+    const contentType = res.headers.get("content-type");
+    if (!isJsonContentType(contentType)) {
+      return {
+        online: false,
+        info: null,
+        error: "Host statis tidak menjalankan layanan backend Python (/api/v1/health mengembalikan HTML).",
+      };
+    }
+
     const data = (await res.json()) as BackendHealthInfo;
-    return { online: data.status === "online", info: data };
+    const isValidHealth =
+      Boolean(data) &&
+      data.status === "online" &&
+      typeof data.engine === "string" &&
+      typeof data.supported_methods_count === "number";
+
+    if (!isValidHealth) {
+      return {
+        online: false,
+        info: null,
+        error: "Respons /api/v1/health tidak sesuai kontrak backend Python ZoneFlow.",
+      };
+    }
+
+    return { online: true, info: data };
   } catch (err: any) {
     clearTimeout(timer);
-    const message = err.name === "AbortError" ? "Timeout menghubungkan ke backend Python" : (err.message || "Gagal menghubungi server");
+    const message =
+      err.name === "AbortError"
+        ? "Timeout menghubungkan ke backend Python"
+        : err.message || "Gagal menghubungi server";
     return { online: false, info: null, error: message };
   }
 }
@@ -107,8 +156,8 @@ export async function getBackendMethods(): Promise<BackendMethodItem[]> {
       headers: { Accept: "application/json" },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return data.methods || [];
+    const data = await parseVerifiedJson<{ methods?: BackendMethodItem[] }>(res, "/api/v1/methods");
+    return Array.isArray(data?.methods) ? data.methods : [];
   } catch {
     return [];
   }
@@ -139,9 +188,11 @@ export async function runPythonSimulation(
     if (!res.ok) {
       let detailMsg = `HTTP ${res.status}`;
       try {
-        const errJson = await res.json();
-        if (errJson.detail) {
-          detailMsg = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+        if (isJsonContentType(res.headers.get("content-type"))) {
+          const errJson = await res.json();
+          if (errJson.detail) {
+            detailMsg = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+          }
         }
       } catch {
         // no json body
@@ -149,7 +200,15 @@ export async function runPythonSimulation(
       throw new Error(detailMsg);
     }
 
-    const data = (await res.json()) as PythonSimulationResponse;
+    const data = await parseVerifiedJson<PythonSimulationResponse>(res, "/api/v1/simulate");
+    if (
+      !data ||
+      !data.metrics ||
+      typeof data.metrics.boarding_time_seconds !== "number" ||
+      !Array.isArray(data.timeline_details)
+    ) {
+      throw new Error("Respons simulasi dari server tidak memuat data metrik atau timeline penumpang yang valid.");
+    }
     return data;
   } catch (err: any) {
     clearTimeout(timer);
@@ -280,9 +339,11 @@ export async function runPythonBatchSimulation(
     if (!res.ok) {
       let detailMsg = `HTTP ${res.status}`;
       try {
-        const errJson = await res.json();
-        if (errJson.detail) {
-          detailMsg = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+        if (isJsonContentType(res.headers.get("content-type"))) {
+          const errJson = await res.json();
+          if (errJson.detail) {
+            detailMsg = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+          }
         }
       } catch {
         // no json body
@@ -290,7 +351,10 @@ export async function runPythonBatchSimulation(
       throw new Error(detailMsg);
     }
 
-    const data = (await res.json()) as PythonBatchSimulationResponse;
+    const data = await parseVerifiedJson<PythonBatchSimulationResponse>(res, "/api/v1/simulate/batch");
+    if (!data || !data.statistics || !Array.isArray(data.replications_data)) {
+      throw new Error("Respons batch simulasi tidak memuat statistik atau data replikasi yang valid.");
+    }
     return data;
   } catch (err: any) {
     clearTimeout(timer);
@@ -386,9 +450,11 @@ async function fetchJsonWithTimeout<T>(
     if (!res.ok) {
       let detailMsg = `HTTP ${res.status}`;
       try {
-        const errJson = await res.json();
-        if (errJson.detail) {
-          detailMsg = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+        if (isJsonContentType(res.headers.get("content-type"))) {
+          const errJson = await res.json();
+          if (errJson.detail) {
+            detailMsg = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+          }
         }
       } catch {
         // no json body
@@ -396,7 +462,7 @@ async function fetchJsonWithTimeout<T>(
       throw new Error(detailMsg);
     }
 
-    return (await res.json()) as T;
+    return await parseVerifiedJson<T>(res, url);
   } catch (err: any) {
     clearTimeout(timer);
     if (err.name === "AbortError") {
@@ -470,7 +536,7 @@ export async function cancelExhaustiveJob(
 export async function getExhaustiveCandidatesCatalog(
   timeoutMs: number = 10000
 ): Promise<ExhaustiveCandidatesCatalog> {
-  return fetchJsonWithTimeout<ExhaustiveCandidatesCatalog>(
+  const data = await fetchJsonWithTimeout<ExhaustiveCandidatesCatalog>(
     `${API_BASE_URL}/optimize/exhaustive/candidates`,
     {
       method: "GET",
@@ -479,6 +545,10 @@ export async function getExhaustiveCandidatesCatalog(
     timeoutMs,
     "Pengambilan katalog kandidat Exhaustive Search melebihi batas waktu (timeout)."
   );
+  if (!data || !Array.isArray(data.sample_candidates)) {
+    throw new Error("Respons katalog kandidat tidak memuat daftar sample_candidates yang valid.");
+  }
+  return data;
 }
 
 // ============================================================================

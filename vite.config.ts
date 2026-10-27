@@ -1,22 +1,21 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import {fileURLToPath} from 'url';
 import {defineConfig, loadEnv} from 'vite';
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   const backendProxyTarget = env.VITE_BACKEND_PROXY_TARGET || process.env.VITE_BACKEND_PROXY_TARGET || 'http://127.0.0.1:8001';
-  const basePath =
-    env.VITE_BASE_PATH ||
-    process.env.VITE_BASE_PATH ||
-    (process.env.GITHUB_ACTIONS === 'true' ? '/zoneflow-boarding-simulation/' : '/');
 
   return {
-    base: basePath,
+    base: '/zoneflow-boarding-simulation/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(import.meta.dirname, '.'),
+        '@': path.resolve(rootDir, '.'),
       },
     },
     server: {

@@ -132,6 +132,15 @@ export function useSimulationRunner(
       });
 
       if (!isMountedRef.current) return;
+      if (
+        !response ||
+        !response.metrics ||
+        typeof response.metrics.boarding_time_seconds !== "number" ||
+        !Array.isArray(response.timeline_details)
+      ) {
+        throw new Error("Format respons simulasi dari server tidak valid.");
+      }
+
       const bySeat: Record<string, PassengerTimelineDetail> = {};
       response.timeline_details.forEach((d) => {
         bySeat[d.seat_id] = d;
@@ -141,13 +150,13 @@ export function useSimulationRunner(
       setDetails(response.timeline_details);
       setDetailsBySeat(bySeat);
       setActiveSource("python");
-      setExecutionTimeMs(response.execution_time_ms);
+      setExecutionTimeMs(typeof response.execution_time_ms === "number" ? response.execution_time_ms : 0);
       setBackendOnline(true);
     } catch (pyErr: any) {
       if (!isMountedRef.current) return;
       setBackendOnline(false);
       setError(
-        `Backend Python tidak dapat dihubungi: ${pyErr.message}. Anda dapat beralih ke Mode Demo Browser.`
+        `Backend Python tidak dapat dihubungi: ${pyErr.message || "Koneksi gagal"}. Anda dapat beralih ke Mode Demo Browser.`
       );
       // PENTING: Jangan fallback diam-diam mengklaim Python. Biarkan error terlihat dan sediakan tombol ganti mode.
     } finally {
