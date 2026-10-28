@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plane, User, Briefcase } from "lucide-react";
+import { User, Briefcase } from "lucide-react";
 
 export interface DemoSessionInfo {
   operatorName: string;
@@ -18,6 +18,8 @@ export const DemoLoginView: React.FC<DemoLoginViewProps> = ({ onEnterDemo }) => 
   const [role, setRole] = useState<string>("Teknisi & Evaluasi Operasional");
 
   const backgroundUrl = `${import.meta.env.BASE_URL}assets/zoneflow-login-background.jpg`;
+  const fullLogoUrl = `${import.meta.env.BASE_URL}assets/zoneflow-logo-full.png`;
+  const iconLogoUrl = `${import.meta.env.BASE_URL}assets/zoneflow-logo-icon.png`;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,25 +42,24 @@ export const DemoLoginView: React.FC<DemoLoginViewProps> = ({ onEnterDemo }) => 
       {/* Lapisan Gelap Transparan agar Teks & Formulir Mudah Dibaca */}
       <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/60 to-slate-950/75 backdrop-blur-[1.5px]" />
 
-      {/* Identitas Merek Sederhana di Kiri Atas */}
+      {/* Logo Lengkap Resmi ZoneFlow (Simbol + Tulisan ZoneFlow) di Kiri Atas dengan Background Transparan */}
       <div className="relative z-10 px-6 sm:px-10 pt-6 sm:pt-8">
-        <div className="inline-flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#086288] to-[#4D8DBA] border border-[#97D7FF]/40 flex items-center justify-center text-white shadow-md">
-            <Plane className="w-4 h-4 -rotate-45" />
-          </div>
-          <span className="text-lg sm:text-xl font-bold tracking-tight text-white">
-            ZoneFlow
-          </span>
-        </div>
+        <img
+          src={fullLogoUrl}
+          alt="ZoneFlow"
+          className="h-9 sm:h-11 w-auto object-contain select-none drop-shadow-[0_2px_6px_rgba(2,6,23,0.45)]"
+        />
       </div>
 
-      {/* Formulir Akses di Tengah Halaman (Komposisi Terinspirasi Oreo) */}
+      {/* Formulir Akses di Tengah Halaman */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md rounded-3xl bg-slate-900/55 backdrop-blur-md border border-white/20 shadow-2xl p-7 sm:p-9 text-white flex flex-col items-center">
-          {/* Ikon Emblem Terpusat */}
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#086288] to-[#4D8DBA] border border-[#97D7FF]/50 flex items-center justify-center shadow-lg shadow-[#086288]/40 mb-4">
-            <Plane className="w-7 h-7 text-[#FFEFC4] -rotate-45" />
-          </div>
+          {/* Simbol Icon Resmi ZoneFlow (Tanpa Tulisan) di Atas Judul Login */}
+          <img
+            src={iconLogoUrl}
+            alt="Simbol ZoneFlow"
+            className="h-11 sm:h-12 w-auto object-contain select-none mb-3.5"
+          />
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white text-center mb-6">
             Login
