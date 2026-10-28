@@ -154,47 +154,100 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
       <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col gap-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-xl bg-sky-50 text-[#086288]">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-sky-50 text-[#086288] shrink-0">
                 <Server className="w-5 h-5" />
               </span>
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
-                  Simulator Batch Replikasi Python (FastAPI / Core v3)
+                  Pengujian Berulang Multi-Replikasi (10–100 Penerbangan)
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Menjalankan eksperimen multi-replikasi (10–100 run) deterministik dan menghitung interval kepercayaan 95%.
+                  Menghitung rata-rata waktu boarding, simpangan baku, dan rentang kepercayaan 95% melalui Layanan Server Python.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
                 backendOnline
                   ? "bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-2xs"
-                  : "bg-rose-50 text-rose-900 border border-rose-300 shadow-2xs"
+                  : "bg-slate-100 text-slate-700 border border-slate-200"
               }`}
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  backendOnline ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+                  backendOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
                 }`}
               />
-              {backendOnline ? "Backend Python Siap" : "Backend Offline"}
+              {backendOnline ? "Layanan Server Python Terhubung" : "Mode Demo Publik (Tanpa Server Python)"}
             </span>
             {!backendOnline && (
               <button
                 onClick={onRecheckBackend}
-                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs flex items-center gap-1"
-                title="Cek ulang koneksi backend"
+                className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-[#086288] border border-sky-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                title="Periksa koneksi ke Layanan Komputasi Tambahan (Server Python)"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
+                <span>Hubungkan Server Python</span>
               </button>
             )}
           </div>
         </div>
+
+        {/* Public Demo Mode Notice & Stored 100-Replication Reference */}
+        {!backendOnline && (
+          <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200 text-xs text-slate-700 flex flex-col gap-3">
+            <div className="flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-[#086288] shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <span className="font-bold text-slate-900">Informasi Mode Demo Publik:</span>{" "}
+                Perhitungan batch baru secara langsung (10–100 replikasi) memerlukan <strong>Layanan Komputasi Tambahan (Server Python FastAPI)</strong>. Pada mode demo publik tanpa server tambahan, Anda tetap dapat meninjau{" "}
+                <strong>Data Benchmark Tersimpan (100 Replikasi)</strong> untuk metode dan tingkat bagasi yang dipilih di bawah ini:
+              </div>
+            </div>
+
+            {storedBenchmark && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="p-3 rounded-xl bg-white border border-sky-100 flex flex-col gap-0.5">
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Data Benchmark Tersimpan (100 Replikasi)
+                  </span>
+                  <span className="text-base font-bold text-[#086288] font-mono tabular-nums">
+                    {storedBenchmark.mean_minutes.toFixed(3)} menit ({(storedBenchmark.mean_minutes * 60).toFixed(1)} dtk)
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Metode: {storedBenchmark.method} (Bagasi {storedBenchmark.baggage_percent}%)
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-sky-100 flex flex-col gap-0.5">
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Simpangan Baku (100 Replikasi)
+                  </span>
+                  <span className="text-base font-bold text-slate-900 font-mono tabular-nums">
+                    ±{storedBenchmark.std_minutes.toFixed(3)} menit (±{(storedBenchmark.std_minutes * 60).toFixed(1)} dtk)
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Variasi waktu antar-penerbangan
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-sky-100 flex flex-col gap-0.5">
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Peringkat Metode (Bagasi {storedBenchmark.baggage_percent}%)
+                  </span>
+                  <span className="text-base font-bold text-slate-900 font-mono tabular-nums">
+                    Peringkat #{Math.round(storedBenchmark.rank_within_baggage)} dari 12 Metode
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Terverifikasi pada 100 replikasi independen
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Form Controls */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -242,7 +295,7 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700">Jumlah Replikasi (N)</label>
               <span className="text-[11px] font-mono font-bold text-[#086288]">
-                {replications} run
+                {replications} penerbangan
               </span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -264,9 +317,9 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
             </div>
           </div>
 
-          {/* 4. Base Seed */}
+          {/* 4. Angka Awal Pengacakan */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-slate-700">Seed Dasar</label>
+            <label className="text-xs font-bold text-slate-700">Angka Awal Pengacakan</label>
             <div className="flex items-center gap-1.5">
               <input
                 type="number"
@@ -280,7 +333,7 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
                 onClick={() => setBaseSeed(20261021)}
                 disabled={isRunning}
                 className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 shrink-0"
-                title="Reset ke seed penelitian 20261021"
+                title="Kembalikan ke angka awal standar penelitian (20261021)"
               >
                 Reset
               </button>
@@ -293,8 +346,8 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
           <div className="text-xs text-slate-500 flex items-center gap-2">
             <Info className="w-4 h-4 text-[#086288] shrink-0" />
             <span>
-              Eksperimen akan mengeksekusi seed <strong>{baseSeed}</strong> hingga{" "}
-              <strong>{baseSeed + replications - 1}</strong> secara deterministik.
+              Pengujian mengurutkan angka awal pengacakan <strong>{baseSeed}</strong> hingga{" "}
+              <strong>{baseSeed + replications - 1}</strong> secara konsisten.
             </span>
           </div>
 
@@ -316,7 +369,7 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
                 className="px-6 py-2.5 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs flex items-center gap-2 transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Play className="w-4 h-4 fill-white" />
-                Jalankan Batch Python ({replications} Replikasi)
+                Jalankan Batch Server Python ({replications} Replikasi)
               </button>
             )}
           </div>
@@ -324,10 +377,10 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
 
         {/* Error Banner */}
         {error && (
-          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2.5 animate-fadeIn">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 flex items-start gap-2.5 animate-fadeIn">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <span className="font-bold">Gagal Menjalankan Batch:</span> {error}
+              <span className="font-bold">Catatan Layanan:</span> {error}
             </div>
           </div>
         )}
@@ -338,10 +391,10 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
             <RefreshCw className="w-6 h-6 text-[#086288] animate-spin" />
             <div>
               <h4 className="text-sm font-bold text-slate-900">
-                Memproses {replications} Replikasi di Backend Python...
+                Memproses {replications} Replikasi di Server Python...
               </h4>
               <p className="text-xs text-slate-500 mt-1">
-                Kalkulasi antrean lorong diskrit dan simulasi interferensi fisik kabin sedang berjalan.
+                Perhitungan antrean lorong dan waktu duduk penumpang sedang berjalan.
               </p>
             </div>
           </div>
@@ -461,7 +514,7 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
                   <strong>Waktu Antre:</strong>{" "}
                   {batchResult.statistics.aggregate_aisle_wait_person_seconds.mean.toFixed(0)} org·s
                   <span className="block text-[10px] text-slate-400 mt-0.5">
-                    Blocker terhalang:{" "}
+                    Penghalang kursi:{" "}
                     {batchResult.statistics.occupied_blocker_count.mean.toFixed(1)} pax
                   </span>
                 </div>
@@ -518,14 +571,14 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
                   Log Audit {batchResult.successful_replications} Replikasi Individual
                 </h4>
                 <p className="text-xs text-slate-500">
-                  Setiap baris mencatat hasil satu penerbangan simulasi lengkap dengan seed deterministiknya.
+                  Setiap baris mencatat hasil satu penerbangan simulasi lengkap dengan angka pengacakannya.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  placeholder="Cari Seed / Replikasi..."
+                  placeholder="Cari Angka Acak / Replikasi..."
                   value={searchSeed}
                   onChange={(e) => setSearchSeed(e.target.value)}
                   className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#086288] w-48"
@@ -538,7 +591,7 @@ export const BatchSimulationPanel: React.FC<BatchSimulationPanelProps> = ({
                 <thead className="bg-slate-50 text-slate-600 font-bold sticky top-0 border-b border-slate-200 z-10">
                   <tr>
                     <th className="px-4 py-3">Rep #</th>
-                    <th className="px-4 py-3">Seed</th>
+                    <th className="px-4 py-3">Angka Pengacakan</th>
                     <th className="px-4 py-3">Durasi (s)</th>
                     <th className="px-4 py-3">Durasi (min)</th>
                     <th className="px-4 py-3">Antrean Lorong</th>

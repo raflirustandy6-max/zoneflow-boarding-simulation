@@ -38,7 +38,7 @@ export function useSimulationRunner(
   baggageRatio: number,
   seed: number
 ) {
-  const [selectedEngine, setSelectedEngine] = useState<EngineMode>("python");
+  const [selectedEngine, setSelectedEngine] = useState<EngineMode>("browser");
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [backendInfo, setBackendInfo] = useState<BackendHealthInfo | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -69,10 +69,10 @@ export function useSimulationRunner(
 
   const isMountedRef = useRef(true);
 
-  // 1. Initial Health Check
+  // 1. On-demand Health Check (tidak dipanggil otomatis saat halaman dibuka di mode Demo Browser)
   const verifyBackend = useCallback(async () => {
     const health = await checkBackendHealth(2500);
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current) return false;
     setBackendOnline(health.online);
     setBackendInfo(health.info);
     return health.online;
@@ -80,17 +80,16 @@ export function useSimulationRunner(
 
   useEffect(() => {
     isMountedRef.current = true;
-    verifyBackend();
     return () => {
       isMountedRef.current = false;
     };
-  }, [verifyBackend]);
+  }, []);
 
   // 2. Run simulation whenever parameters or engine mode change
   const executeSimulation = useCallback(async () => {
     setError(null);
 
-    // Jika mode yang dipilih adalah Browser TypeScript Demo
+    // Mode Utama: Demo Browser (TypeScript Engine lokal tanpa request jaringan)
     if (selectedEngine === "browser") {
       setIsLoading(true);
       const startT = performance.now();

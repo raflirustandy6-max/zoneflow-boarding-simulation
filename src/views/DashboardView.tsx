@@ -21,7 +21,7 @@ import { NavTab } from "../components/Sidebar";
 
 interface DashboardViewProps {
   selectedBaggage: number; // 50, 60, 70
-  onNavigate: (tab: NavTab) => void;
+  onNavigate: (tab: string) => void;
   onSelectBaggage: (ratio: number) => void;
 }
 
@@ -144,25 +144,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           title="Hasil GA-Zone-WMA"
           value={formatIdNumber(gaMinutes, 2)}
           unit="menit"
-          badge="Kromosom [5, 18]"
+          badge="Batas Zona: Baris 5 & 18"
           subtitle={`Peringkat #${gaRank} dari 12 metode (${formatIdNumber(gaSeconds, 1)} detik)`}
-          secondaryText="Batas zona: baris 5 & 18 • Selisih dari Exhaustive Search: 0,00%"
+          secondaryText="Pembagian 5, 13, 12 baris • Selisih dari perhitungan penuh: 0,00%"
           variant="sky"
           icon={Cpu}
-          tooltip="Hasil optimasi Algoritma Genetika: batas zona di baris 5 dan 18 (ukuran zona [5, 13, 12]), urutan panggil zona 3 → 2 → 1."
+          tooltip="Konfigurasi pembagian zona hasil optimasi: batas zona di baris 5 dan 18 (pembagian 5, 13, dan 12 baris), urutan boarding Zona 3 ke Zona 2 ke Zona 1."
         />
 
         {/* Card 3: Baseline Zona Tetap (Fixed-Zone) */}
         <StatCard
-          title="Baseline Zona Tetap"
+          title="Pembanding Zona Seragam"
           value={formatIdNumber(fixedMinutes, 2)}
           unit="menit"
-          badge="Fixed-Zone (3 Zona)"
-          subtitle={`GA rata-rata ${formatIdNumber(gaFasterSeconds, 1)} detik (${formatIdNumber(gaFasterPct, 2)}%) lebih cepat`}
-          secondaryText={`10 baris/zona (${formatIdNumber(fixedSeconds, 1)} dtk) • GA unggul di ${gaWinReplications}/${totalPairs} replikasi`}
+          badge="3 Zona Seragam (10 Baris)"
+          subtitle={`Optimasi zona rata-rata ${formatIdNumber(gaFasterSeconds, 1)} detik (${formatIdNumber(gaFasterPct, 2)}%) lebih cepat`}
+          secondaryText={`10 baris/zona (${formatIdNumber(fixedSeconds, 1)} dtk) • Unggul di ${gaWinReplications}/${totalPairs} replikasi`}
           variant="cream"
           icon={Layers}
-          tooltip="Pembanding tiga zona seimbang (masing-masing 10 baris: 1–10, 11–20, 21–30) dengan urutan belakang ke depan dan aturan WMA."
+          tooltip="Pembanding tiga zona seimbang (masing-masing 10 baris: 1–10, 11–20, 21–30) dengan urutan belakang ke depan dan prioritas kursi jendela-tengah-lorong."
         />
 
         {/* Card 4: Skenario Simulasi */}
@@ -315,15 +315,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <HelpCircle className="w-4 h-4 text-[#086288] shrink-0 mt-0.5" />
           <div className="flex flex-col gap-1">
             <span className="font-semibold text-slate-800">
-              Catatan Interpretasi Ilmiah & Asumsi Simulator
+              Catatan Operasional & Asumsi Simulator
             </span>
             <p>
-              Pada model kabin 180 kursi ini, metode terstruktur berbasis posisi kursi luar-ke-dalam (
-              <strong>Back-to-Front-WILMA</strong>) menghasilkan penumpukan lorong terendah karena
-              penumpang kursi jendela dan tengah duduk lebih dahulu dari baris belakang, sehingga mencegah
-              interferensi kursi. Algoritma Genetika (<strong>GA-Zone-WMA</strong>) menemukan batas zona
-              di baris 5 dan 18 (ukuran zona [5, 13, 12]) dengan urutan belakang-ke-depan [3, 2, 1],
-              identik dengan solusi terbaik dari pencarian menyeluruh (<em>Exhaustive Search</em>) atas 546 kandidat.
+              Pada model kabin 180 kursi ini, metode <strong>Back-to-Front-WILMA</strong> menghasilkan
+              antrean lorong terendah karena penumpang kursi jendela dan tengah masuk lebih dahulu dari baris
+              belakang, sehingga mencegah terhalangnya akses kursi. Metode optimasi zona (<strong>GA-Zone-WMA</strong>)
+              menemukan <strong>batas zona di baris 5 dan 18</strong> (pembagian zona: 5, 13, dan 12 baris) dengan{" "}
+              <strong>urutan boarding Zona 3 ke Zona 2 ke Zona 1</strong>, sama persis dengan hasil terbaik dari
+              pengujian seluruh 546 kombinasi zona.
             </p>
           </div>
         </div>
@@ -341,65 +341,66 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <div>
                   <h4 className="text-base font-bold text-slate-900">
-                    Optimasi Algoritma Genetika (GA)
+                    Konfigurasi Pembagian Zona Terbaik (GA-Zone-WMA)
                   </h4>
                   <span className="text-xs text-slate-500">
-                    Konfigurasi Batas & Urutan Pemanggilan Zona Terbaik
+                    Pengaturan Batas Baris & Urutan Pemanggilan Zona Kabin
                   </span>
                 </div>
               </div>
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                Sesuai Optimum Exhaustive (0,00%)
+                Sama dengan Hasil Terbaik (Selisih 0,00%)
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
                 <span className="text-xs text-slate-500 font-medium">Batas Zona</span>
-                <span className="text-base font-bold text-slate-900 font-mono tabular-nums">
-                  [5, 18]
+                <span className="text-sm font-bold text-slate-900 tabular-nums">
+                  Baris 5 dan 18
                 </span>
-                <span className="text-[11px] text-slate-500">Ukuran baris: [5, 13, 12]</span>
+                <span className="text-[11px] text-slate-500">Pembagian: 5, 13, 12 baris</span>
               </div>
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
-                <span className="text-xs text-slate-500 font-medium">Urutan Panggil</span>
-                <span className="text-base font-bold text-slate-900 font-mono tabular-nums">
-                  [3, 2, 1]
+                <span className="text-xs text-slate-500 font-medium">Urutan Boarding</span>
+                <span className="text-sm font-bold text-slate-900 tabular-nums">
+                  Zona 3 → 2 → 1
                 </span>
-                <span className="text-[11px] text-slate-500">Belakang → Tengah → Depan</span>
+                <span className="text-[11px] text-slate-500">Belakang ke Depan</span>
               </div>
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
-                <span className="text-xs text-slate-500 font-medium">Ruang Solusi</span>
-                <span className="text-base font-bold text-[#086288] font-mono tabular-nums">
-                  546 Kandidat
+                <span className="text-xs text-slate-500 font-medium">Total Kombinasi Diuji</span>
+                <span className="text-sm font-bold text-[#086288] tabular-nums">
+                  546 Konfigurasi
                 </span>
-                <span className="text-[11px] text-slate-500">91 partisi × 6 urutan</span>
+                <span className="text-[11px] text-slate-500">91 ukuran × 6 urutan</span>
               </div>
             </div>
 
             {/* Pembagian Zona Detail */}
-            <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-sky-50/70 border border-sky-100 text-xs text-slate-700">
-              <div className="flex flex-col items-center text-center gap-0.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-3 rounded-2xl bg-sky-50/70 border border-sky-100 text-xs text-slate-700">
+              <div className="flex flex-col items-center text-center gap-0.5 p-1">
                 <span className="font-semibold text-[#086288]">Zona 1 (Depan)</span>
                 <span className="font-mono text-slate-900 font-semibold tabular-nums">Baris 1–5</span>
-                <span className="text-[11px] text-slate-500">5 baris (30 kursi)</span>
+                <span className="text-[11px] text-slate-500">5 baris (30 kursi) • Giliran 3</span>
               </div>
-              <div className="flex flex-col items-center text-center border-x border-sky-200/60 px-2 gap-0.5">
+              <div className="flex flex-col items-center text-center sm:border-x border-sky-200/60 px-2 gap-0.5 p-1">
                 <span className="font-semibold text-[#086288]">Zona 2 (Tengah)</span>
                 <span className="font-mono text-slate-900 font-semibold tabular-nums">Baris 6–18</span>
-                <span className="text-[11px] text-slate-500">13 baris (78 kursi)</span>
+                <span className="text-[11px] text-slate-500">13 baris (78 kursi) • Giliran 2</span>
               </div>
-              <div className="flex flex-col items-center text-center gap-0.5">
+              <div className="flex flex-col items-center text-center gap-0.5 p-1">
                 <span className="font-semibold text-[#086288]">Zona 3 (Belakang)</span>
                 <span className="font-mono text-slate-900 font-semibold tabular-nums">Baris 19–30</span>
-                <span className="text-[11px] text-slate-500">12 baris (72 kursi)</span>
+                <span className="text-[11px] text-slate-500">12 baris (72 kursi) • Giliran 1</span>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Hasil Algoritma Genetika telah diverifikasi terhadap pencarian menyeluruh (
-              <em>Exhaustive Search</em>). Pada himpunan pelatihan 15 skenario (3 tingkat bagasi × 5 replikasi),
-              GA mencapai <strong>selisih 0,00%</strong> terhadap solusi eksak terbaik (batas baris [5, 18] dan urutan zona [3, 2, 1]).
+              Konfigurasi pembagian zona ini telah diverifikasi terhadap perhitungan menyeluruh atas 546 kombinasi.
+              Pada 15 skenario uji (3 tingkat bagasi × 5 replikasi), metode optimasi mencapai{" "}
+              <strong>selisih 0,00%</strong> terhadap konfigurasi dengan waktu boarding terendah
+              (batas zona di baris 5 dan 18 serta urutan boarding Zona 3 ke Zona 2 ke Zona 1).
             </p>
           </div>
 

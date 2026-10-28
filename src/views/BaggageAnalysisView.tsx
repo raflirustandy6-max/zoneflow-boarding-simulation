@@ -240,7 +240,7 @@ export const BaggageAnalysisView: React.FC = () => {
             </code>
             <p>
               Untuk kapasitas penuh 180 kursi: 50% = 90 penumpang, 60% = 108 penumpang, dan 70% = 126 penumpang.
-              Penempatan penumpang berbagasi diacak secara independen pada setiap replikasi berdasarkan <em>seed</em>.
+              Penempatan penumpang berbagasi diacak secara independen pada setiap replikasi berdasarkan angka awal pengacakan.
             </p>
           </div>
 

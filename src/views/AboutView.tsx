@@ -70,10 +70,10 @@ export const AboutView: React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-[#086288] text-white flex items-center justify-center font-bold text-xs">
               UI
             </div>
-            <h4 className="text-sm font-bold text-slate-900">1. Antarmuka React</h4>
+            <h4 className="text-sm font-bold text-slate-900">1. Simulasi Demo Browser</h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Dashboard analitik responsif, visualisasi 2D kabin pesawat, kontrol animasi linimasa,
-              filter skenario bagasi, dan panel pemantauan optimasi waktu-nyata.
+              Mode utama yang aktif otomatis saat website dibuka di GitHub Pages. Menjalankan simulasi
+              1 replikasi baru (180 penumpang) langsung di browser menggunakan mesin TypeScript tanpa membutuhkan server Python.
             </p>
           </div>
 
@@ -81,10 +81,10 @@ export const AboutView: React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-purple-700 text-white flex items-center justify-center font-bold text-xs">
               CSV
             </div>
-            <h4 className="text-sm font-bold text-slate-900">2. Database Benchmark</h4>
+            <h4 className="text-sm font-bold text-slate-900">2. Data Benchmark Tersimpan</h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Seluruh metrik dan tabel benchmark diambil langsung dari keluaran eksperimen Python
-              tersimpan (100 replikasi independen) tanpa modifikasi angka penelitian.
+              Seluruh metrik dashboard, tabel hasil, dan analisis bagasi diambil langsung dari hasil eksperimen
+              penelitian tersimpan (100 replikasi independen per skenario) tanpa modifikasi angka.
             </p>
           </div>
 
@@ -92,9 +92,9 @@ export const AboutView: React.FC = () => {
             <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center font-bold text-xs">
               API
             </div>
-            <h4 className="text-sm font-bold text-slate-900">3. Backend Python FastAPI</h4>
+            <h4 className="text-sm font-bold text-slate-900">3. Server Komputasi Python (Opsional)</h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Layanan REST API mandiri pada direktori <code className="text-emerald-800 font-mono text-[11px] bg-emerald-100/60 px-1.5 py-0.5 rounded">backend/</code> yang mengeksekusi simulasi tunggal, batch, Exhaustive Search, dan GA secara dinamis.
+              Layanan FastAPI mandiri pada direktori <code className="text-emerald-800 font-mono text-[11px] bg-emerald-100/60 px-1.5 py-0.5 rounded">backend/</code> yang dapat dihubungkan sesuai kebutuhan untuk eksperimen batch (10–100 replikasi), Exhaustive Search, dan optimasi GA dinamis.
             </p>
           </div>
         </div>
@@ -106,7 +106,7 @@ export const AboutView: React.FC = () => {
           <Terminal className="w-5 h-5 text-[#086288]" />
           <div>
             <h3 className="text-base font-bold text-slate-900">
-              Spesifikasi Kontrak API Python & Status Layanan
+              Spesifikasi Layanan Komputasi Tambahan (Server Python FastAPI)
             </h3>
             <span className="text-xs text-slate-500">
               Layanan FastAPI berjalan pada port 8001 (diproksi melalui <code className="font-mono">/api/v1</code> atau variabel <code className="font-mono">VITE_API_BASE_URL</code>).
@@ -115,7 +115,7 @@ export const AboutView: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-600 leading-relaxed">
-          ZoneFlow dilengkapi backend FastAPI Python mandiri (<code className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">backend/app/main.py</code>) dengan pemeriksaan kesehatan otomatis (<code className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">GET /api/v1/health</code>) dan katalog metode (<code className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">GET /api/v1/methods</code>). Apabila server Python sedang tidak aktif, antarmuka secara transparan menampilkan status <strong>Offline</strong> dan menyediakan mode cadangan <strong>Demo Browser (TypeScript Engine)</strong> untuk simulasi tunggal:
+          Secara bawaan, website berjalan dalam <strong>Mode Demo Browser</strong> tanpa memanggil server eksternal. Apabila pengguna ingin menjalankan perhitungan skala besar secara langsung, layanan FastAPI Python (<code className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">backend/app/main.py</code>) dapat dihubungkan secara manual melalui tombol <strong>Hubungkan Server Python</strong> pada panel simulasi:
         </p>
 
         {/* Daftar Endpoint Aktif */}

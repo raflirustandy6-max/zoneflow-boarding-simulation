@@ -207,10 +207,10 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
             <TrendingDown className="w-5 h-5 text-[#086288]" />
             <div>
               <h4 className="text-sm font-bold text-slate-900">
-                Kurva Evolusi Fitness per Generasi (Data Eksekusi Nyata Backend Python)
+                Grafik Penurunan Waktu Boarding per Putaran Optimasi (Server Python)
               </h4>
               <p className="text-xs text-slate-500">
-                Melacak penurunan rata-rata waktu boarding (15 batch pelatihan) dari Generasi 0 hingga Generasi {history[history.length - 1].generation}
+                Melacak rata-rata waktu boarding (15 skenario uji) dari Putaran 0 hingga Putaran {history[history.length - 1].generation}
               </p>
             </div>
           </div>
@@ -218,19 +218,19 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
           <div className="flex flex-wrap items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-1 rounded-full bg-[#086288]" />
-              <span className="font-bold text-slate-700">Best Fitness (Elit)</span>
+              <span className="font-bold text-slate-700">Waktu Boarding Terendah</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-1 rounded-full bg-amber-500" />
-              <span className="font-semibold text-slate-600">Mean Populasi</span>
+              <span className="font-semibold text-slate-600">Rata-rata Kumpulan Konfigurasi</span>
             </div>
             {exhaustiveRef !== null && (
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-0.5 border-b-2 border-dashed border-emerald-600" />
                 <span className="font-semibold text-emerald-700">
                   {isVerifiedOptimum
-                    ? `Exhaustive Optimum (${exhaustiveRef.toFixed(3)}s)`
-                    : `Kromosom Referensi [5, 18] (${exhaustiveRef.toFixed(3)}s)`}
+                    ? `Target Terbaik 546 Kombinasi (${exhaustiveRef.toFixed(3)} dtk)`
+                    : `Konfigurasi Standar Baris 5 & 18 (${exhaustiveRef.toFixed(3)} dtk)`}
                 </span>
               </div>
             )}
@@ -267,7 +267,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               );
             })}
 
-            {/* Garis Referensi (Exhaustive Optimum jika base_seed terverifikasi, atau Kromosom Referensi [5, 18]) */}
+            {/* Garis Referensi */}
             {refY !== null && exhaustiveRef !== null && (
               <>
                 <line
@@ -286,13 +286,13 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                   className="text-[9px] fill-emerald-700 font-mono font-bold"
                 >
                   {isVerifiedOptimum
-                    ? `Exhaustive Optimum: ${exhaustiveRef.toFixed(3)}s`
-                    : `Kromosom Referensi [5, 18]: ${exhaustiveRef.toFixed(3)}s`}
+                    ? `Waktu Terbaik 546 Kombinasi: ${exhaustiveRef.toFixed(3)} dtk`
+                    : `Konfigurasi Standar Baris 5 & 18: ${exhaustiveRef.toFixed(3)} dtk`}
                 </text>
               </>
             )}
 
-            {/* Kurva Mean Fitness Populasi */}
+            {/* Kurva Mean Kumpulan Konfigurasi */}
             {history.length > 1 && (
               <polyline
                 fill="none"
@@ -303,7 +303,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               />
             )}
 
-            {/* Kurva Best Fitness */}
+            {/* Kurva Waktu Boarding Terendah */}
             {history.length > 1 && (
               <polyline
                 fill="none"
@@ -313,7 +313,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               />
             )}
 
-            {/* Titik per Generasi */}
+            {/* Titik per Putaran */}
             {history.map((h) => {
               const cx = getX(h.generation);
               const cyBest = getY(h.best_fitness_seconds);
@@ -327,7 +327,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                     fill="#f59e0b"
                   >
                     <title>
-                      {`Gen ${h.generation} • Mean Populasi: ${h.mean_fitness_seconds.toFixed(3)}s (${h.mean_fitness_minutes.toFixed(3)}m)`}
+                      {`Putaran ${h.generation} • Rata-rata Konfigurasi: ${h.mean_fitness_seconds.toFixed(3)} dtk (${h.mean_fitness_minutes.toFixed(3)} mnt)`}
                     </title>
                   </circle>
                   <circle
@@ -339,7 +339,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                     strokeWidth="1.5"
                   >
                     <title>
-                      {`Gen ${h.generation} • Best Fitness: ${h.best_fitness_seconds.toFixed(3)}s (${h.best_fitness_minutes.toFixed(3)}m) • Batas [${h.best_boundaries.join(", ")}] Urutan [${h.best_order.join(", ")}]`}
+                      {`Putaran ${h.generation} • Waktu Terendah: ${h.best_fitness_seconds.toFixed(3)} dtk (${h.best_fitness_minutes.toFixed(3)} mnt) • Batas zona baris ${h.best_boundaries.join(" dan ")} • Urutan Zona ${h.best_order.join(" → ")}`}
                     </title>
                   </circle>
                   {(h.generation % Math.max(1, Math.floor(maxGen / 10)) === 0 ||
@@ -350,7 +350,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                       textAnchor="middle"
                       className="text-[10px] fill-slate-500 font-mono"
                     >
-                      G{h.generation}
+                      P{h.generation}
                     </text>
                   )}
                 </g>
@@ -373,49 +373,102 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold uppercase tracking-wider text-[#086288] bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
-                Tahap 5B-2 • Dynamic Evolutionary Search
+                Pencarian Bertahap Konfigurasi Zona
               </span>
               <span className="text-xs font-semibold text-slate-500">
-                Hasil Optimasi Dinamis — Python Backend
+                Optimasi Pembagian Zona & Urutan Boarding (GA-Zone-WMA)
               </span>
             </div>
             <h3 className="text-xl font-black text-slate-900 tracking-tight">
-              Optimasi Genetic Algorithm Dinamis (GA-Zone-WMA)
+              Optimasi Pembagian Zona Boarding (GA-Zone-WMA)
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
-              Menjalankan evolusi populasi kromosom batas zona dan urutan pemanggilan secara nyata di backend Python (Cell 8 & Cell 9 script penelitian). Menggunakan seleksi turnamen, uniform crossover dengan proyeksi Euclidean (repair ukuran zona), mutasi L1-neighbor, dan elitisme.
+              Mencari konfigurasi pembagian zona dan urutan boarding dengan waktu boarding terendah secara bertahap tanpa harus menguji seluruh 546 kombinasi satu per satu. Menggunakan pemilihan konfigurasi kandidat, mempertahankan konfigurasi terbaik di setiap putaran, serta perubahan variasi konfigurasi secara terarah.
             </p>
           </div>
         </div>
 
         {/* Status Backend */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {backendOnline ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Python Backend Siap
+              Layanan Server Python Terhubung
             </div>
           ) : (
             <button
               onClick={onRecheckBackend}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold hover:bg-rose-100 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-200 text-[#086288] text-xs font-bold hover:bg-sky-100 transition-colors"
             >
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              Backend Offline (Cek Ulang)
+              <RefreshCw className="w-3.5 h-3.5" />
+              Hubungkan Server Python
             </button>
           )}
         </div>
       </div>
 
+      {/* Stored Research Result Summary for Public Demo Mode */}
+      {!jobStatus && (
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Hasil Optimasi Penelitian Tersimpan (GA-Zone-WMA)
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Konfigurasi dengan waktu boarding terendah yang ditemukan pada putaran optimasi ke-6 (menguji 121 dari 546 kombinasi, hemat 77,8% waktu perhitungan)
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 w-fit">
+              Data Benchmark Tersimpan
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
+              <span className="text-slate-500 font-medium">Batas Zona Terbaik</span>
+              <span className="text-base font-bold text-slate-900 tabular-nums">
+                Baris 5 dan 18
+              </span>
+              <span className="text-[11px] text-slate-500">Zona 1: 1–5 • Zona 2: 6–18 • Zona 3: 19–30</span>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
+              <span className="text-slate-500 font-medium">Pembagian Zona</span>
+              <span className="text-base font-bold text-slate-900 tabular-nums">
+                5, 13, dan 12 baris
+              </span>
+              <span className="text-[11px] text-slate-500">Total 30 baris kabin (180 kursi)</span>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
+              <span className="text-slate-500 font-medium">Urutan Boarding</span>
+              <span className="text-base font-bold text-[#086288] tabular-nums">
+                Zona 3 ke Zona 2 ke Zona 1
+              </span>
+              <span className="text-[11px] text-slate-500">Belakang ke depan (prioritas kursi jendela)</span>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-0.5">
+              <span className="text-slate-500 font-medium">Waktu Boarding Terendah</span>
+              <span className="text-base font-bold text-emerald-700 tabular-nums">
+                291,069 dtk (4,851 mnt)
+              </span>
+              <span className="text-[11px] text-slate-500">Selisih 0,00% dari evaluasi penuh 546 kombinasi</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notice Pemisahan Data Benchmark */}
       <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-100 text-xs text-sky-900 flex items-start gap-3">
         <AlertCircle className="w-4 h-4 text-[#086288] shrink-0 mt-0.5" />
         <div className="leading-relaxed">
-          <strong>Pemisahan Data & Metodologi:</strong> Seluruh hasil pada panel ini diberi label{" "}
-          <span className="font-mono font-bold bg-sky-100/70 text-[#086288] px-1 py-0.5 rounded">
-            Hasil Optimasi Dinamis — Python Backend
+          <strong>Informasi Layanan Komputasi:</strong> Simulasi putaran optimasi baru secara langsung dijalankan melalui{" "}
+          <span className="font-semibold bg-sky-100/70 text-[#086288] px-1.5 py-0.5 rounded">
+            Layanan Komputasi Tambahan (Server Python)
           </span>
-          . Fitness dievaluasi pada <strong>15 batch pelatihan</strong> (5 replikasi × 3 level bagasi 50%, 60%, 70%). Dataset benchmark historis 100 replikasi tersimpan (di mana <strong>Back-to-Front-WILMA</strong> tetap peringkat #1 secara keseluruhan) tidak diubah.
+          . Rata-rata waktu boarding dihitung pada <strong>15 skenario uji</strong> (5 replikasi × 3 tingkat bagasi 50%, 60%, dan 70%). Data Benchmark Tersimpan (100 replikasi) di mana <strong>Back-to-Front-WILMA</strong> menempati peringkat #1 tidak diubah.
         </div>
       </div>
 
@@ -423,13 +476,13 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
       <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col gap-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <Sliders className="w-5 h-5 text-[#086288]" />
+            <Sliders className="w-5 h-5 text-[#086288] shrink-0" />
             <div>
               <h4 className="text-base font-bold text-slate-900">
-                Parameter Evolusi Genetic Algorithm (Konfigurasi Penelitian)
+                Pengaturan Pencarian Konfigurasi Zona (Standar Penelitian)
               </h4>
               <p className="text-xs text-slate-500">
-                Default disesuaikan dengan script penelitian asli: Populasi 24, Generasi 20, Elitisme 2, Mutasi 0.30, Turnamen 3, GA Seed 20262020.
+                Standar penelitian: 24 konfigurasi per putaran, 20 putaran optimasi, 2 konfigurasi terbaik dipertahankan, peluang variasi 0,30, 3 kandidat per pemilihan.
               </p>
             </div>
           </div>
@@ -439,10 +492,10 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onClick={handleResetDefaults}
               disabled={isRunning}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
-              title="Kembalikan ke parameter penelitian asli"
+              title="Kembalikan ke pengaturan standar penelitian"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Reset Parameter Riset
+              Reset Pengaturan Standar
             </button>
 
             {isRunning ? (
@@ -451,7 +504,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                 className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all cursor-pointer"
               >
                 <XCircle className="w-4 h-4" />
-                Batalkan Optimasi GA
+                Batalkan Optimasi
               </button>
             ) : (
               <button
@@ -460,17 +513,17 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                 className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-[#086288] hover:bg-[#064e6d] disabled:bg-slate-300 text-white font-bold text-xs shadow-md shadow-sky-900/10 transition-all cursor-pointer"
               >
                 <Play className="w-4 h-4 fill-white" />
-                Mulai Optimasi GA (Python Backend)
+                Jalankan Optimasi Zona (Server Python)
               </button>
             )}
           </div>
         </div>
 
         {/* Grid Input Parameter GA */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-slate-600">
-              Ukuran Populasi (6–100)
+            <label className="text-xs font-bold text-slate-700">
+              Kumpulan Konfigurasi yang Diuji (6–100)
             </label>
             <input
               type="number"
@@ -481,12 +534,12 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onChange={(e) => setPopulationSize(Math.max(6, Math.min(100, parseInt(e.target.value) || 24)))}
               className="px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#086288] disabled:opacity-50"
             />
-            <span className="text-[10px] text-slate-400">Default riset: 24</span>
+            <span className="text-[11px] text-slate-500">Standar penelitian: 24 konfigurasi</span>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-slate-600">
-              Jumlah Generasi (1–100)
+            <label className="text-xs font-bold text-slate-700">
+              Jumlah Putaran Optimasi (1–100)
             </label>
             <input
               type="number"
@@ -497,12 +550,12 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onChange={(e) => setGenerations(Math.max(1, Math.min(100, parseInt(e.target.value) || 20)))}
               className="px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#086288] disabled:opacity-50"
             />
-            <span className="text-[10px] text-slate-400">Default riset: 20</span>
+            <span className="text-[11px] text-slate-500">Standar penelitian: 20 putaran</span>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-slate-600">
-              Laju Mutasi (0.0–1.0)
+            <label className="text-xs font-bold text-slate-700">
+              Peluang Perubahan Variasi Konfigurasi (0,0–1,0)
             </label>
             <input
               type="number"
@@ -514,12 +567,12 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onChange={(e) => setMutationRate(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
               className="px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#086288] disabled:opacity-50"
             />
-            <span className="text-[10px] text-slate-400">Default riset: 0.30</span>
+            <span className="text-[11px] text-slate-500">Standar penelitian: 0,30</span>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-slate-600">
-              Individu Elit (0–10)
+            <label className="text-xs font-bold text-slate-700">
+              Mempertahankan Konfigurasi Terbaik (0–10)
             </label>
             <input
               type="number"
@@ -530,12 +583,12 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onChange={(e) => setEliteCount(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
               className="px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#086288] disabled:opacity-50"
             />
-            <span className="text-[10px] text-slate-400">Default riset: 2</span>
+            <span className="text-[11px] text-slate-500">Standar penelitian: 2 konfigurasi</span>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-slate-600">
-              Ukuran Turnamen (2–10)
+            <label className="text-xs font-bold text-slate-700">
+              Pemilihan Konfigurasi Kandidat (2–10)
             </label>
             <input
               type="number"
@@ -546,12 +599,12 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onChange={(e) => setTournamentSize(Math.max(2, Math.min(10, parseInt(e.target.value) || 3)))}
               className="px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#086288] disabled:opacity-50"
             />
-            <span className="text-[10px] text-slate-400">Default riset: 3</span>
+            <span className="text-[11px] text-slate-500">Standar penelitian: 3 kandidat</span>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-slate-600">
-              Random Seed GA
+            <label className="text-xs font-bold text-slate-700">
+              Angka Awal Pengacakan Optimasi
             </label>
             <input
               type="number"
@@ -560,23 +613,23 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               onChange={(e) => setGaSeed(parseInt(e.target.value) || 0)}
               className="px-3 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#086288] disabled:opacity-50"
             />
-            <span className="text-[10px] text-slate-400">Riset: 20262020</span>
+            <span className="text-[11px] text-slate-500">Standar penelitian: 20262020</span>
           </div>
         </div>
 
         {/* Live Progress Indicator saat berjalan */}
         {isRunning && jobStatus && (
           <div className="p-5 rounded-2xl bg-sky-50/90 border border-sky-200 flex flex-col gap-4 animate-in fade-in">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-[#086288] animate-spin" />
                 <span className="text-xs font-bold text-slate-900">
-                  Evolusi Populasi GA Sedang Berjalan di Python Backend...
+                  Pencarian Konfigurasi Zona Sedang Berjalan di Server Python...
                 </span>
               </div>
               <div className="flex items-center gap-3 text-xs font-mono font-bold text-[#086288]">
                 <span>
-                  Generasi {jobStatus.current_generation} / {jobStatus.total_generations}
+                  Putaran {jobStatus.current_generation} / {jobStatus.total_generations}
                 </span>
                 <span className="px-2 py-0.5 rounded-lg bg-sky-200/80 text-sky-950">
                   {jobStatus.progress_percent}%
@@ -595,13 +648,13 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               <div className="flex items-center gap-2 text-slate-600">
                 <Clock className="w-4 h-4 text-slate-400" />
                 <span>
-                  Waktu: <strong>{jobStatus.elapsed_time_seconds}s</strong>
+                  Waktu: <strong>{jobStatus.elapsed_time_seconds} dtk</strong>
                 </span>
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Dna className="w-4 h-4 text-[#086288]" />
                 <span>
-                  Kandidat Unik: <strong>{jobStatus.unique_candidates_evaluated}</strong> / 546
+                  Konfigurasi Diuji: <strong>{jobStatus.unique_candidates_evaluated}</strong> / 546
                 </span>
               </div>
               {jobStatus.best_candidate && (
@@ -609,15 +662,15 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                   <div className="flex items-center gap-2 text-slate-600">
                     <Layers className="w-4 h-4 text-amber-600" />
                     <span>
-                      Batas Terbaik: <strong>[{jobStatus.best_candidate.zone_boundaries.join(", ")}]</strong> | Urutan{" "}
-                      <strong>[{jobStatus.best_candidate.zone_order.join(", ")}]</strong>
+                      Batas Terbaik: <strong>Baris {jobStatus.best_candidate.zone_boundaries.join(" & ")}</strong> | Urutan{" "}
+                      <strong>Zona {jobStatus.best_candidate.zone_order.join(" → ")}</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-slate-600">
                     <Award className="w-4 h-4 text-emerald-600" />
                     <span>
-                      Fitness: <strong>{jobStatus.best_candidate.training_fitness_seconds}s</strong> (
-                      {jobStatus.best_candidate.training_fitness_minutes}m)
+                      Waktu Boarding: <strong>{jobStatus.best_candidate.training_fitness_seconds} dtk</strong> (
+                      {jobStatus.best_candidate.training_fitness_minutes} mnt)
                     </span>
                   </div>
                 </>
@@ -628,10 +681,10 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
 
         {/* Error Banner */}
         {error && (
-          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-3">
-            <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <strong>Gagal:</strong> {error}
+              <strong>Catatan Layanan:</strong> {error}
             </div>
           </div>
         )}
@@ -640,7 +693,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
         {jobStatus?.status === "cancelled" && (
           <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 text-xs text-slate-700 flex items-center justify-between">
             <span>
-              Optimasi GA dibatalkan oleh pengguna pada generasi {jobStatus.current_generation} ({jobStatus.unique_candidates_evaluated} kandidat unik dievaluasi).
+              Optimasi dibatalkan oleh pengguna pada putaran ke-{jobStatus.current_generation} ({jobStatus.unique_candidates_evaluated} konfigurasi unik telah diuji).
             </span>
             <span className="font-bold text-slate-500">Status: Dibatalkan</span>
           </div>
@@ -662,12 +715,12 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-emerald-600" />
                 <h4 className="text-lg font-black text-slate-900 tracking-tight">
-                  Evolusi GA Selesai ({jobStatus.total_generations} Generasi • {jobStatus.unique_candidates_evaluated} Kandidat Unik Dievaluasi)
+                  Optimasi Selesai ({jobStatus.total_generations} Putaran • {jobStatus.unique_candidates_evaluated} Konfigurasi Unik Diuji)
                 </h4>
               </div>
               <p className="text-xs text-slate-500">
                 Waktu eksekusi: <strong>{jobStatus.execution_time_seconds} detik</strong> • Menghemat{" "}
-                <strong>{jobStatus.evaluation_reduction_percent}%</strong> evaluasi kandidat unik dibanding Exhaustive Search (546 kandidat).
+                <strong>{jobStatus.evaluation_reduction_percent}%</strong> pengujian dibanding mengevaluasi seluruh 546 kombinasi.
               </p>
             </div>
 
@@ -676,17 +729,16 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                 <div className="px-4 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-2 text-xs font-bold shadow-sm">
                   <CheckCircle className="w-4 h-4 text-emerald-600" />
                   <span>
-                    Konvergen ke Exhaustive Optimum: [
-                    {jobStatus.exhaustive_comparison?.exhaustive_boundaries.join(", ") ?? "5, 18"}] | [
-                    {jobStatus.exhaustive_comparison?.exhaustive_order.join(", ") ?? "3, 2, 1"}] (
-                    {jobStatus.exhaustive_comparison?.comparison_label ?? "Gap terhadap Exhaustive Optimum"}: 0.00%)
+                    Sama dengan Konfigurasi Terbaik 546 Kombinasi: Batas Baris{" "}
+                    {jobStatus.exhaustive_comparison?.exhaustive_boundaries.join(" & ") ?? "5 & 18"} | Urutan Zona{" "}
+                    {jobStatus.exhaustive_comparison?.exhaustive_order.join(" → ") ?? "3 → 2 → 1"} (Selisih: 0,00%)
                   </span>
                 </div>
               ) : (
                 <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-2 text-xs font-bold shadow-sm">
                   <AlertCircle className="w-4 h-4 text-amber-600" />
                   <span>
-                    Solusi Dekat-Optimum ({jobStatus.exhaustive_comparison?.comparison_label ?? "Gap terhadap Exhaustive Optimum"}:{" "}
+                    Konfigurasi Mendekati Terbaik (Selisih:{" "}
                     {(jobStatus.exhaustive_comparison?.fitness_gap_percent ?? 0) >= 0 ? "+" : ""}
                     {(jobStatus.exhaustive_comparison?.fitness_gap_percent ?? 0).toFixed(2)}%)
                   </span>
@@ -696,9 +748,9 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
               <div className="px-4 py-2 rounded-2xl bg-sky-50 border border-sky-200 text-sky-950 flex items-center gap-2 text-xs font-bold shadow-sm">
                 <GitCompare className="w-4 h-4 text-[#086288]" />
                 <span>
-                  {jobStatus.exhaustive_comparison.comparison_label}:{" "}
+                  Selisih terhadap Konfigurasi Standar Baris 5 & 18:{" "}
                   {jobStatus.exhaustive_comparison.fitness_gap_seconds >= 0 ? "+" : ""}
-                  {jobStatus.exhaustive_comparison.fitness_gap_seconds.toFixed(3)}s (
+                  {jobStatus.exhaustive_comparison.fitness_gap_seconds.toFixed(3)} dtk (
                   {jobStatus.exhaustive_comparison.fitness_gap_percent >= 0 ? "+" : ""}
                   {jobStatus.exhaustive_comparison.fitness_gap_percent.toFixed(2)}%)
                 </span>
@@ -710,82 +762,81 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400">
-                <span className="text-[11px] font-bold uppercase tracking-wider">Batas Zona Terbaik GA</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider">Batas Zona Terbaik</span>
                 <Layers className="w-4 h-4 text-[#086288]" />
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
-                  [{jobStatus.best_candidate.zone_boundaries.join(", ")}]
+                <div className="text-xl font-black text-slate-900 tracking-tight">
+                  Baris {jobStatus.best_candidate.zone_boundaries.join(" dan ")}
                 </div>
                 <span className="text-xs text-slate-500 mt-1 block">
-                  Z1: R01–{jobStatus.best_candidate.zone_boundaries[0].toString().padStart(2, "0")} | Z2: R
-                  {(jobStatus.best_candidate.zone_boundaries[0] + 1).toString().padStart(2, "0")}–
-                  {jobStatus.best_candidate.zone_boundaries[1].toString().padStart(2, "0")} | Z3: R
-                  {(jobStatus.best_candidate.zone_boundaries[1] + 1).toString().padStart(2, "0")}–30
+                  Zona 1: 1–{jobStatus.best_candidate.zone_boundaries[0]} | Zona 2:{" "}
+                  {jobStatus.best_candidate.zone_boundaries[0] + 1}–{jobStatus.best_candidate.zone_boundaries[1]} | Zona 3:{" "}
+                  {jobStatus.best_candidate.zone_boundaries[1] + 1}–30
                 </span>
               </div>
               <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-                Kromosom hasil seleksi & mutasi GA
+                Konfigurasi pembagian zona terpilih
               </div>
             </div>
 
             <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400">
-                <span className="text-[11px] font-bold uppercase tracking-wider">Ukuran Zona Terbaik GA</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider">Pembagian Zona</span>
                 <BarChart3 className="w-4 h-4 text-indigo-600" />
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
-                  [{jobStatus.best_candidate.zone_sizes.join(", ")}] Baris
+                <div className="text-xl font-black text-slate-900 tracking-tight">
+                  {jobStatus.best_candidate.zone_sizes.join(", ")} Baris
                 </div>
                 <span className="text-xs text-slate-500 mt-1 block">
-                  Z1: {jobStatus.best_candidate.zone_sizes[0]}b • Z2: {jobStatus.best_candidate.zone_sizes[1]}b • Z3:{" "}
-                  {jobStatus.best_candidate.zone_sizes[2]}b
+                  Zona 1: {jobStatus.best_candidate.zone_sizes[0]} baris • Zona 2: {jobStatus.best_candidate.zone_sizes[1]} baris • Zona 3:{" "}
+                  {jobStatus.best_candidate.zone_sizes[2]} baris
                 </span>
               </div>
               <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-                Valid pada rentang [5..15] baris (Total 30)
+                Rentang sah 5–15 baris per zona (total 30)
               </div>
             </div>
 
             <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400">
-                <span className="text-[11px] font-bold uppercase tracking-wider">Urutan Zona Terbaik GA</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider">Urutan Boarding</span>
                 <Clock className="w-4 h-4 text-amber-600" />
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
-                  [{jobStatus.best_candidate.zone_order.join(", ")}]
+                <div className="text-xl font-black text-slate-900 tracking-tight">
+                  {formatOrderName(jobStatus.best_candidate.zone_order)}
                 </div>
                 <span className="text-xs text-slate-500 mt-1 block">
-                  {formatOrderName(jobStatus.best_candidate.zone_order)}
+                  Urutan pemanggilan zona penumpang
                 </span>
               </div>
               <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-                Permutasi hasil Order Crossover (OX)
+                Prioritas kursi jendela–tengah–lorong
               </div>
             </div>
 
             <div className="bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400">
-                <span className="text-[11px] font-bold uppercase tracking-wider">Best Fitness GA (15 Batch)</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider">Waktu Boarding Terendah</span>
                 <Award className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-black text-emerald-700 tracking-tight">
-                  {jobStatus.best_candidate.training_fitness_seconds} s
+                <div className="text-2xl font-black text-emerald-700 tracking-tight tabular-nums">
+                  {jobStatus.best_candidate.training_fitness_seconds} dtk
                 </div>
                 <span className="text-xs text-slate-500 mt-1 block">
                   Setara <strong>{jobStatus.best_candidate.training_fitness_minutes} menit</strong>
                 </span>
               </div>
               <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-                Dievaluasi pada {jobStatus.unique_candidates_evaluated} kandidat unik
+                Diuji pada {jobStatus.unique_candidates_evaluated} konfigurasi unik
               </div>
             </div>
           </div>
 
-          {/* Perbandingan Langsung: GA vs Exhaustive Search (546 Kandidat) atau Kromosom Referensi [5, 18] */}
+          {/* Perbandingan Langsung: GA vs Exhaustive Search (546 Kandidat) */}
           {jobStatus.exhaustive_comparison && (
             <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col gap-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -794,13 +845,13 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                   <div>
                     <h4 className="text-sm font-bold text-slate-900">
                       {jobStatus.exhaustive_comparison.is_exhaustive_optimum_verified
-                        ? "Perbandingan Hasil: Genetic Algorithm (GA-Zone-WMA) vs Exhaustive Search (546 Kandidat)"
-                        : "Perbandingan Hasil: Genetic Algorithm (GA-Zone-WMA) vs Kromosom Referensi [5, 18]"}
+                        ? "Perbandingan Hasil: Optimasi Bertahap (GA-Zone-WMA) vs Evaluasi Menyeluruh (546 Konfigurasi)"
+                        : "Perbandingan Hasil: Optimasi Bertahap (GA-Zone-WMA) vs Konfigurasi Standar Baris 5 dan 18"}
                     </h4>
                     <p className="text-xs text-slate-500">
                       {jobStatus.exhaustive_comparison.is_exhaustive_optimum_verified
-                        ? "Membandingkan keakuratan solusi dan penghematan komputasi antara pencarian metaheuristik GA dan enumerasi penuh 546 kandidat pada training yang sama"
-                        : `Base seed kustom (${jobStatus.training_config?.base_seed ?? baseSeed}) belum dievaluasi dengan Exhaustive Search 546 kandidat — pembanding menggunakan Kromosom Referensi [5, 18] | [3, 2, 1] pada training yang sama`}
+                        ? "Membandingkan akurasi konfigurasi pembagian zona dan penghematan jumlah pengujian"
+                        : `Angka awal pengacakan (${jobStatus.training_config?.base_seed ?? baseSeed}) dibandingkan terhadap konfigurasi standar batas baris 5 dan 18`}
                     </p>
                   </div>
                 </div>
@@ -810,94 +861,94 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500 font-semibold bg-slate-50/70">
-                      <th className="py-2.5 px-3">Metrik Evaluasi</th>
-                      <th className="py-2.5 px-3">Genetic Algorithm (GA-Zone-WMA)</th>
+                      <th className="py-2.5 px-3">Indikator Evaluasi</th>
+                      <th className="py-2.5 px-3">Optimasi Bertahap (GA-Zone-WMA)</th>
                       <th className="py-2.5 px-3">
-                        {jobStatus.exhaustive_comparison.reference_label}
+                        {jobStatus.exhaustive_comparison.is_exhaustive_optimum_verified
+                          ? "Evaluasi Menyeluruh (546 Kombinasi)"
+                          : "Konfigurasi Standar (Baris 5 dan 18)"}
                       </th>
-                      <th className="py-2.5 px-3 text-right">Selisih / Efisiensi</th>
+                      <th className="py-2.5 px-3 text-right">Perbandingan / Penghematan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     <tr>
                       <td className="py-2.5 px-3 font-semibold text-slate-700">
-                        {jobStatus.exhaustive_comparison.is_exhaustive_optimum_verified
-                          ? "Batas Zona Optimum"
-                          : "Batas Zona Referensi [5, 18]"}
+                        Batas Zona Kabin
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                        [{jobStatus.best_candidate.zone_boundaries.join(", ")}]
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        Baris {jobStatus.best_candidate.zone_boundaries.join(" dan ")}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        [{jobStatus.exhaustive_comparison.exhaustive_boundaries.join(", ")}]
+                      <td className="py-2.5 px-3 text-slate-700">
+                        Baris {jobStatus.exhaustive_comparison.exhaustive_boundaries.join(" dan ")}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
                         {JSON.stringify(jobStatus.best_candidate.zone_boundaries) ===
                         JSON.stringify(jobStatus.exhaustive_comparison.exhaustive_boundaries)
-                          ? "Identik"
+                          ? "Sama Persis"
                           : "Berbeda"}
                       </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-700">Ukuran Ketiga Zona</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                        [{jobStatus.best_candidate.zone_sizes.join(", ")}] baris
+                      <td className="py-2.5 px-3 font-semibold text-slate-700">Pembagian Zona</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        {jobStatus.best_candidate.zone_sizes.join(", ")} baris
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        [{jobStatus.exhaustive_comparison.exhaustive_sizes.join(", ")}] baris
+                      <td className="py-2.5 px-3 text-slate-700">
+                        {jobStatus.exhaustive_comparison.exhaustive_sizes.join(", ")} baris
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
                         {JSON.stringify(jobStatus.best_candidate.zone_sizes) ===
                         JSON.stringify(jobStatus.exhaustive_comparison.exhaustive_sizes)
-                          ? "Identik"
+                          ? "Sama Persis"
                           : "Berbeda"}
                       </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-700">Urutan Pemanggilan Zona</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
-                        [{jobStatus.best_candidate.zone_order.join(", ")}]
+                      <td className="py-2.5 px-3 font-semibold text-slate-700">Urutan Boarding</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        {formatOrderName(jobStatus.best_candidate.zone_order)}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        [{jobStatus.exhaustive_comparison.exhaustive_order.join(", ")}]
+                      <td className="py-2.5 px-3 text-slate-700">
+                        {formatOrderName(jobStatus.exhaustive_comparison.exhaustive_order)}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
                         {JSON.stringify(jobStatus.best_candidate.zone_order) ===
                         JSON.stringify(jobStatus.exhaustive_comparison.exhaustive_order)
-                          ? "Identik"
+                          ? "Sama Persis"
                           : "Berbeda"}
                       </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-700">Training Fitness (15 Batch)</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                        {jobStatus.best_candidate.training_fitness_seconds.toFixed(3)} s (
-                        {jobStatus.best_candidate.training_fitness_minutes.toFixed(3)} m)
+                      <td className="py-2.5 px-3 font-semibold text-slate-700">Rata-rata Waktu Boarding (15 Skenario)</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 tabular-nums">
+                        {jobStatus.best_candidate.training_fitness_seconds.toFixed(3)} dtk (
+                        {jobStatus.best_candidate.training_fitness_minutes.toFixed(3)} mnt)
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        {jobStatus.exhaustive_comparison.exhaustive_fitness_seconds.toFixed(3)} s (
-                        {jobStatus.exhaustive_comparison.exhaustive_fitness_minutes.toFixed(3)} m)
+                      <td className="py-2.5 px-3 font-mono text-slate-700 tabular-nums">
+                        {jobStatus.exhaustive_comparison.exhaustive_fitness_seconds.toFixed(3)} dtk (
+                        {jobStatus.exhaustive_comparison.exhaustive_fitness_minutes.toFixed(3)} mnt)
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
-                        {jobStatus.exhaustive_comparison.comparison_label}:{" "}
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700 tabular-nums">
+                        Selisih:{" "}
                         {jobStatus.exhaustive_comparison.fitness_gap_seconds >= 0 ? "+" : ""}
-                        {jobStatus.exhaustive_comparison.fitness_gap_seconds.toFixed(3)} s (
+                        {jobStatus.exhaustive_comparison.fitness_gap_seconds.toFixed(3)} dtk (
                         {jobStatus.exhaustive_comparison.fitness_gap_percent >= 0 ? "+" : ""}
                         {jobStatus.exhaustive_comparison.fitness_gap_percent.toFixed(2)}%)
                       </td>
                     </tr>
                     <tr>
-                      <td className="py-2.5 px-3 font-semibold text-slate-700">Kandidat Unik Dievaluasi</td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-700">Jumlah Konfigurasi Diuji</td>
                       <td className="py-2.5 px-3 font-mono font-bold text-[#086288]">
-                        {jobStatus.unique_candidates_evaluated} kandidat unik
+                        {jobStatus.unique_candidates_evaluated} konfigurasi unik
                       </td>
                       <td className="py-2.5 px-3 font-mono text-slate-700">
                         {jobStatus.exhaustive_comparison.is_exhaustive_optimum_verified
-                          ? `${jobStatus.exhaustive_comparison.exhaustive_candidates_evaluated} kandidat (seluruh ruang)`
-                          : `${jobStatus.exhaustive_comparison.exhaustive_candidates_evaluated} kromosom referensi (tanpa 546 kandidat)`}
+                          ? `${jobStatus.exhaustive_comparison.exhaustive_candidates_evaluated} konfigurasi (seluruh ruang)`
+                          : `${jobStatus.exhaustive_comparison.exhaustive_candidates_evaluated} konfigurasi standar`}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-[#086288]">
-                        Hemat {jobStatus.evaluation_reduction_percent}% thd ruang 546 kandidat
+                        Hemat {jobStatus.evaluation_reduction_percent}% pengujian dari 546 kombinasi
                       </td>
                     </tr>
                   </tbody>
@@ -906,10 +957,10 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
             </div>
           )}
 
-          {/* Tabel Riwayat Generasi & Top 10 Kandidat Unik */}
+          {/* Tabel Riwayat Putaran Optimasi & Top 10 Kandidat Unik */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setSelectedTab("generations")}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -918,7 +969,7 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                       : "bg-slate-100 text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Riwayat Evolusi per Generasi (G0–G{jobStatus.total_generations})
+                  Riwayat Putaran Optimasi (0–{jobStatus.total_generations})
                 </button>
                 <button
                   onClick={() => setSelectedTab("top_candidates")}
@@ -928,11 +979,11 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                       : "bg-slate-100 text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  10 Kandidat Unik Terbaik selama Evolusi
+                  10 Konfigurasi dengan Waktu Boarding Terendah
                 </button>
               </div>
               <span className="text-xs text-slate-400 font-mono">
-                Total Simulasi Pelatihan: {jobStatus.unique_candidates_evaluated * 15} penerbangan
+                Total Simulasi: {jobStatus.unique_candidates_evaluated * 15} penerbangan
               </span>
             </div>
 
@@ -941,14 +992,14 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
                     <tr>
-                      <th className="py-2.5 px-3">Generasi</th>
-                      <th className="py-2.5 px-3">Batas Terbaik</th>
-                      <th className="py-2.5 px-3">Ukuran Terbaik</th>
-                      <th className="py-2.5 px-3">Urutan Terbaik</th>
-                      <th className="py-2.5 px-3 text-right">Best Fitness (s)</th>
-                      <th className="py-2.5 px-3 text-right">Mean Populasi (s)</th>
-                      <th className="py-2.5 px-3 text-right">Worst Populasi (s)</th>
-                      <th className="py-2.5 px-3 text-right">Kandidat Unik</th>
+                      <th className="py-2.5 px-3">Putaran</th>
+                      <th className="py-2.5 px-3">Batas Zona Terbaik</th>
+                      <th className="py-2.5 px-3">Pembagian Zona</th>
+                      <th className="py-2.5 px-3">Urutan Boarding</th>
+                      <th className="py-2.5 px-3 text-right">Waktu Terendah (dtk)</th>
+                      <th className="py-2.5 px-3 text-right">Rata-rata Kumpulan (dtk)</th>
+                      <th className="py-2.5 px-3 text-right">Waktu Tertinggi (dtk)</th>
+                      <th className="py-2.5 px-3 text-right">Konfigurasi Diuji</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -967,21 +1018,21 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                           }`}
                         >
                           <td className="py-2 px-3 font-mono font-bold text-slate-800">
-                            Gen {gen.generation}
+                            Putaran {gen.generation}
                           </td>
-                          <td className="py-2 px-3 font-mono">[{gen.best_boundaries.join(", ")}]</td>
-                          <td className="py-2 px-3 font-mono">[{gen.best_sizes.join(", ")}]</td>
-                          <td className="py-2 px-3 font-mono">[{gen.best_order.join(", ")}]</td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-[#086288]">
-                            {gen.best_fitness_seconds.toFixed(3)} s ({gen.best_fitness_minutes.toFixed(3)} m)
+                          <td className="py-2 px-3">Baris {gen.best_boundaries.join(" & ")}</td>
+                          <td className="py-2 px-3">{gen.best_sizes.join(", ")} baris</td>
+                          <td className="py-2 px-3">{formatOrderName(gen.best_order)}</td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-[#086288] tabular-nums">
+                            {gen.best_fitness_seconds.toFixed(3)} dtk ({gen.best_fitness_minutes.toFixed(3)} mnt)
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-slate-600">
-                            {gen.mean_fitness_seconds.toFixed(3)} s
+                          <td className="py-2 px-3 text-right font-mono text-slate-600 tabular-nums">
+                            {gen.mean_fitness_seconds.toFixed(3)} dtk
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-slate-400">
-                            {gen.worst_fitness_seconds.toFixed(3)} s
+                          <td className="py-2 px-3 text-right font-mono text-slate-400 tabular-nums">
+                            {gen.worst_fitness_seconds.toFixed(3)} dtk
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-slate-700">
+                          <td className="py-2 px-3 text-right font-mono text-slate-700 tabular-nums">
                             {gen.unique_candidates_evaluated}
                           </td>
                         </tr>
@@ -997,11 +1048,11 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                     <tr className="border-b border-slate-200 text-slate-500 font-semibold bg-slate-50/70">
                       <th className="py-2.5 px-3">Peringkat</th>
                       <th className="py-2.5 px-3">Batas Zona</th>
-                      <th className="py-2.5 px-3">Ukuran Zona</th>
-                      <th className="py-2.5 px-3">Urutan Pemanggilan</th>
-                      <th className="py-2.5 px-3 text-right">Fitness (Detik)</th>
-                      <th className="py-2.5 px-3 text-right">Fitness (Menit)</th>
-                      <th className="py-2.5 px-3 text-right">Gap thd Best GA</th>
+                      <th className="py-2.5 px-3">Pembagian Zona</th>
+                      <th className="py-2.5 px-3">Urutan Boarding</th>
+                      <th className="py-2.5 px-3 text-right">Waktu Boarding (Detik)</th>
+                      <th className="py-2.5 px-3 text-right">Waktu Boarding (Menit)</th>
+                      <th className="py-2.5 px-3 text-right">Selisih dari Terbaik</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1023,18 +1074,18 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
                             {isBest && <Award className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
                             <span>#{idx + 1}</span>
                           </td>
-                          <td className="py-2.5 px-3 font-mono">[{cand.zone_boundaries.join(", ")}]</td>
-                          <td className="py-2.5 px-3 font-mono">[{cand.zone_sizes.join(", ")}]</td>
-                          <td className="py-2.5 px-3 font-mono">[{cand.zone_order.join(", ")}]</td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-900">
-                            {cand.training_fitness_seconds.toFixed(3)} s
+                          <td className="py-2.5 px-3">Baris {cand.zone_boundaries.join(" dan ")}</td>
+                          <td className="py-2.5 px-3">{cand.zone_sizes.join(", ")} baris</td>
+                          <td className="py-2.5 px-3">{formatOrderName(cand.zone_order)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-900 tabular-nums">
+                            {cand.training_fitness_seconds.toFixed(3)} dtk
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                            {cand.training_fitness_minutes.toFixed(3)} m
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-600 tabular-nums">
+                            {cand.training_fitness_minutes.toFixed(3)} mnt
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono">
+                          <td className="py-2.5 px-3 text-right font-mono tabular-nums">
                             {isBest ? (
-                              <span className="text-emerald-700 font-bold">0.00% (Best)</span>
+                              <span className="text-emerald-700 font-bold">0,00% (Tercepat)</span>
                             ) : (
                               <span className="text-slate-500">+{gapPct.toFixed(2)}%</span>
                             )}
@@ -1052,18 +1103,16 @@ export const GAOptimizationPanel: React.FC<GAOptimizationPanelProps> = ({
           <div className="bg-slate-50 rounded-3xl p-6 border border-slate-200/90 text-xs text-slate-600 flex flex-col gap-3">
             <h5 className="font-bold text-slate-900 flex items-center gap-2">
               <ExternalLink className="w-4 h-4 text-[#086288]" />
-              Catatan Metodologis Evolusi GA Dinamis, Variabilitas Seed & Pemisahan dari Benchmark Historis
+              Catatan Operasional Pencarian Konfigurasi Zona (GA-Zone-WMA)
             </h5>
             <p className="leading-relaxed">
-              1. <strong>Mekanisme Evolusi Nyata:</strong> Populasi awal (24 individu) dimulai dengan kromosom seimbang{" "}
-              <code>((10, 20), (3, 2, 1))</code>, 6 permutasi batas seimbang, serta individu acak unik. Setiap generasi mempertahankan 2 individu elit terbaik, memilih induk dengan turnamen (k=3), melakukan crossover ukuran zona diikuti proyeksi Euclidean ke partisi valid (<code>repair_sizes</code>) serta Order Crossover (OX) pada urutan zona, lalu memutasi ukuran zona dalam jarak L1 ≤ 4 dan menukar urutan zona dengan probabilitas 0.30.
+              1. <strong>Cara Kerja Pencarian Bertahap:</strong> Dimulai dengan 24 konfigurasi pembagian zona (termasuk pembagian zona seimbang 10–10–10 baris dan variasi acak). Pada setiap putaran optimasi, 2 konfigurasi dengan waktu boarding terendah dipertahankan, kemudian sistem melakukan pemilihan konfigurasi kandidat dan menguji perubahan variasi batas baris serta urutan zona.
             </p>
             <p className="leading-relaxed">
-              2. <strong>Sifat Stokastik Multi-Seed & Isolasi Fitness Cache:</strong> Setiap pekerjaan optimasi menggunakan{" "}
-              <code>fitness_cache</code> terisolasi yang terikat pada tanda tangan <code>base_seed</code> pelatihan. Pada seed penelitian (<code>ga_seed = 20262020</code>), GA mengevaluasi <strong>121 kandidat unik</strong> dari 546 kemungkinan (hemat 77.8% evaluasi) dan menemukan global optimum eksak <strong>[5, 18] | [3, 2, 1]</strong> (<strong>291.069 detik / 4.851 menit</strong>) pertama kali pada <strong>Generasi ke-6</strong>. Karena GA bersifat stokastik terhadap <code>ga_seed</code>, tidak setiap seed dijamin konvergen ke global optimum (misalnya <code>ga_seed = 179</code> dan <code>247</code> berhenti pada solusi peringkat #2 <code>[5, 17] | [3, 2, 1]</code> dengan fitness <code>291.430 detik</code>, gap <code>+0.124%</code>).
+              2. <strong>Efisiensi Pengujian:</strong> Dengan angka awal pengacakan standar penelitian (<code>20262020</code>), metode ini hanya perlu menguji <strong>121 konfigurasi unik</strong> dari total 546 kemungkinan (menghemat 77,8% waktu perhitungan) dan berhasil menemukan konfigurasi terbaik <strong>batas zona di baris 5 dan 18</strong> serta <strong>urutan boarding Zona 3 ke Zona 2 ke Zona 1</strong> (<strong>291,069 detik / 4,851 menit</strong>) pada <strong>Putaran Optimasi ke-6</strong>.
             </p>
             <p className="leading-relaxed">
-              3. <strong>Pemisahan Hasil Optimasi Dinamis vs Benchmark Akhir (100 Replikasi):</strong> Nilai fitness di atas merupakan <strong>hasil optimasi dinamis pada 15 batch pelatihan</strong> (5 replikasi × bagasi 50%, 60%, 70%), terpisah dari dataset benchmark historis 100 replikasi independen di mana <strong>Back-to-Front-WILMA</strong> tetap menempati peringkat #1 secara keseluruhan.
+              3. <strong>Pemisahan dari Data Benchmark Tersimpan (100 Replikasi):</strong> Rata-rata waktu boarding di atas dihitung pada <strong>15 skenario uji</strong> untuk memilih batas zona terbaik, sedangkan perbandingan akhir antar-metode tetap mengacu pada <strong>Data Benchmark Tersimpan (100 Replikasi)</strong>.
             </p>
           </div>
         </div>

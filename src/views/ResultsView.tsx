@@ -313,7 +313,7 @@ export const ResultsView: React.FC = () => {
                 Contoh: GA lebih cepat ~430–476 detik dibanding <em>Random</em> dan ~134–156 detik dibanding <em>Steffen</em>.<br />
                 <strong>Selisih Positif (Merah):</strong> Metode pembanding selesai lebih cepat daripada GA-Zone-WMA.
                 Contoh: <em>Back-to-Front-WILMA</em> lebih cepat ~20–22 detik daripada GA.<br />
-                <strong>Selisih 0,000 detik (Abu-abu):</strong> GA-Zone-WMA dibanding <em>Exhaustive-Zone-WMA</em> bernilai tepat 0 karena GA menemukan batas zona [5, 18] dan urutan [3, 2, 1] yang identik dengan solusi optimum eksak.
+                <strong>Selisih 0,000 detik (Abu-abu):</strong> GA-Zone-WMA dibanding <em>Exhaustive-Zone-WMA</em> bernilai tepat 0 karena GA menemukan konfigurasi pembagian zona terbaik (batas zona: baris 5 dan 18; urutan boarding: Zona 3 ke Zona 2 ke Zona 1) yang identik dengan solusi optimum eksak.
               </p>
             </div>
           </div>

@@ -1,52 +1,46 @@
 import React from "react";
 import {
   Menu,
-  SlidersHorizontal,
   Info,
-  Calendar,
   Layers,
+  Users,
+  Luggage,
+  UserCheck,
 } from "lucide-react";
 import { NavTab } from "./Sidebar";
+import { AircraftLayoutConfig } from "../simulation/engine";
 
 interface HeaderProps {
   activeTab: NavTab;
   onOpenMobileMenu: () => void;
-  selectedBaggage: number; // 50, 60, 70
-  onSelectBaggage: (ratio: number) => void;
+  selectedLayout: AircraftLayoutConfig;
+  passengerCountInput: string;
+  baggageCountInput: string;
   onOpenInfoModal: () => void;
+  operatorName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onOpenMobileMenu,
-  selectedBaggage,
-  onSelectBaggage,
+  selectedLayout,
+  passengerCountInput,
+  baggageCountInput,
   onOpenInfoModal,
+  operatorName,
 }) => {
   const titles: Record<NavTab, { title: string; desc: string }> = {
-    dashboard: {
-      title: "Ringkasan Dashboard",
-      desc: "Evaluasi komparatif 12 metode boarding pesawat dan optimasi Algoritma Genetika (GA).",
+    aircraft: {
+      title: "Menu 1 — Pemilihan Layout Pesawat",
+      desc: "Pilih jenis pesawat, periksa diagram denah kabin dari atas, serta tentukan jumlah penumpang dan penumpang pembawa bagasi kabin.",
     },
     simulation: {
-      title: "Simulasi Boarding Interaktif",
-      desc: "Visualisasi pergerakan penumpang, antrean lorong, dan optimasi zona pada kabin 3-3.",
+      title: "Menu 2 — Verifikasi Skenario & Evaluasi AZBO",
+      desc: "Verifikasi ringkasan skenario dan parameter model sebelum menjalankan evaluasi komparatif serta optimasi zona AZBO.",
     },
     results: {
-      title: "Hasil & Perbandingan Benchmark",
-      desc: "Tabel peringkat lengkap, metrik simpangan baku, dan uji berpasangan GA terhadap metode pembanding.",
-    },
-    baggage: {
-      title: "Analisis Sensitivitas Bagasi",
-      desc: "Dampak peningkatan proporsi bagasi kabin (50% → 60% → 70%) terhadap durasi boarding.",
-    },
-    methodology: {
-      title: "Metodologi & Database Literatur",
-      desc: "Dokumentasi lengkap 5 tabel referensi: inventaris metode, parameter simulasi, temuan studi, dan sitasi.",
-    },
-    about: {
-      title: "Tentang ZoneFlow & Arsitektur",
-      desc: "Tujuan penelitian, arsitektur frontend–backend Python, dan spesifikasi kontrak REST API.",
+      title: "Menu 3 — Hasil Optimasi AZBO & Simulasi Metode Terbaik",
+      desc: "Rekomendasi metode boarding tercepat, tabel peringkat seluruh metode, dan simulasi animasi gerakan penumpang metode terbaik.",
     },
   };
 
@@ -69,9 +63,9 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                 {current.title}
               </h1>
-              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-sky-50 text-[#086288] border border-sky-200 whitespace-nowrap">
                 <Layers className="w-3 h-3 text-[#086288]" />
-                180 Kursi (30 Baris)
+                {selectedLayout.name} ({selectedLayout.seatConfiguration} • {selectedLayout.capacity} Kursi)
               </span>
             </div>
             <p className="text-xs text-slate-500 font-normal mt-0.5 max-w-2xl leading-relaxed">
@@ -80,58 +74,50 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Baggage Level Switcher & Actions */}
-        <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap shrink-0">
-          {/* Baggage selector */}
-          <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200 text-xs shadow-2xs">
-            <span className="text-xs font-semibold text-slate-600 px-2.5 flex items-center gap-1.5 whitespace-nowrap">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              Bagasi:
+        {/* Right: Active Scenario Summary & Info Modal Trigger */}
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+          <div className="flex items-center gap-2 bg-slate-100/90 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+            <span className="inline-flex items-center gap-1 font-semibold text-slate-700 whitespace-nowrap">
+              <Users className="w-3.5 h-3.5 text-[#086288]" />
+              Penumpang:{" "}
+              <strong className="font-mono text-slate-900">
+                {passengerCountInput.trim() !== ""
+                  ? `${passengerCountInput}/${selectedLayout.capacity}`
+                  : `—/${selectedLayout.capacity}`}
+              </strong>
             </span>
-            {[50, 60, 70].map((val) => (
-              <button
-                key={val}
-                onClick={() => onSelectBaggage(val)}
-                className={`px-3 py-1.5 rounded-lg font-semibold tabular-nums transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086288] ${
-                  selectedBaggage === val
-                    ? "bg-[#086288] text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
-                }`}
-                title={`Pilih skenario tingkat bagasi ${val}%`}
-              >
-                {val}%
-              </button>
-            ))}
+            <span className="text-slate-300">|</span>
+            <span className="inline-flex items-center gap-1 font-semibold text-slate-700 whitespace-nowrap">
+              <Luggage className="w-3.5 h-3.5 text-amber-700" />
+              Bagasi:{" "}
+              <strong className="font-mono text-slate-900">
+                {baggageCountInput.trim() !== "" ? `${baggageCountInput} orang` : "— orang"}
+              </strong>
+            </span>
           </div>
 
           {/* Info Modal Trigger */}
           <button
             onClick={onOpenInfoModal}
             className="p-2 text-slate-600 hover:text-[#086288] hover:bg-slate-100 rounded-xl border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#086288] transition-colors shrink-0"
-            title="Catatan integritas sumber data & batasan penelitian"
-            aria-label="Catatan integritas sumber data & batasan penelitian"
+            title="Catatan sumber data & batasan penelitian"
+            aria-label="Catatan sumber data & batasan penelitian"
           >
             <Info className="w-4 h-4" />
           </button>
 
-          {/* Mode & Data Source Indicator */}
+          {/* Demo Session Indicator */}
           <div className="hidden xl:flex items-center gap-2.5 pl-3 border-l border-slate-200">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shadow-2xs shrink-0 ${
-                activeTab === "simulation"
-                  ? "bg-gradient-to-tr from-[#086288] to-emerald-600 text-white"
-                  : "bg-gradient-to-tr from-[#086288] to-[#4D8DBA] text-white"
-              }`}
-            >
-              {activeTab === "simulation" ? "SIM" : "CSV"}
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shadow-2xs shrink-0 bg-gradient-to-tr from-[#086288] to-[#4D8DBA] text-white">
+              DEMO
             </div>
             <div className="flex flex-col text-left">
               <span className="text-xs font-semibold text-slate-800 leading-tight whitespace-nowrap">
-                {activeTab === "simulation" ? "Mode Simulasi & Optimasi" : "Data Benchmark Tersimpan"}
+                {operatorName || "Mode Demo Publik"}
               </span>
               <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1 whitespace-nowrap">
-                <Calendar className="w-3 h-3" />
-                {activeTab === "simulation" ? "Backend Python & Browser" : "100 Replikasi (Python)"}
+                <UserCheck className="w-3 h-3 text-emerald-600" />
+                Simulasi Browser Aktif
               </span>
             </div>
           </div>
