@@ -22,9 +22,9 @@ interface AircraftLayoutViewProps {
   selectedLayout: AircraftLayoutConfig;
   onSelectLayout: (layout: AircraftLayoutConfig) => void;
   passengerCountInput: string;
-  onChangePassengerCountInput: (val: string) => void;
-  baggageCountInput: string;
-  onChangeBaggageCountInput: (val: string) => void;
+  baggagePercentInput: string;
+  onChangeBaggagePercentInput: (val: string) => void;
+  computedBaggageCount: number;
   passengerError: string | null;
   baggageError: string | null;
   onProceedToSimulation: () => void;
@@ -136,37 +136,24 @@ const MiniCabinSchematic: React.FC<{
 export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
   selectedLayout,
   onSelectLayout,
-  passengerCountInput,
-  onChangePassengerCountInput,
-  baggageCountInput,
-  onChangeBaggageCountInput,
+  baggagePercentInput,
+  onChangeBaggagePercentInput,
+  computedBaggageCount,
   passengerError,
   baggageError,
   onProceedToSimulation,
 }) => {
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
-  const parsedPax =
-    passengerCountInput.trim() === "" ? NaN : Number(passengerCountInput.trim());
-  const parsedBag =
-    baggageCountInput.trim() === "" ? NaN : Number(baggageCountInput.trim());
-
-  const validPaxForPreview =
-    Number.isInteger(parsedPax) &&
-    parsedPax >= 0 &&
-    parsedPax <= selectedLayout.capacity
-      ? parsedPax
+  const validPaxForPreview = selectedLayout.capacity;
+  const parsedBagPct =
+    baggagePercentInput.trim() === "" ? NaN : Number(baggagePercentInput.trim());
+  const validBagPctForPreview =
+    !Number.isNaN(parsedBagPct) && parsedBagPct >= 0 && parsedBagPct <= 100
+      ? parsedBagPct
       : null;
-
-  const maxAllowedBags =
-    validPaxForPreview !== null ? validPaxForPreview : selectedLayout.capacity;
-
   const validBagForPreview =
-    Number.isInteger(parsedBag) &&
-    parsedBag >= 0 &&
-    parsedBag <= maxAllowedBags
-      ? parsedBag
-      : null;
+    validBagPctForPreview !== null ? computedBaggageCount : null;
 
   const zoneBounds = equalZoneBoundaries(selectedLayout.nRows, K_ZONES);
 
@@ -533,23 +520,24 @@ export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
           </div>
         </div>
 
-        {/* Bagian Bawah: Input Manual Skenario Penumpang & Bagasi serta Kartu Ringkasan Rata Tengah */}
+        {/* Bagian Bawah: Kondisi Penumpang (100% Terisi) & Persentase Penumpang Membawa Bagasi */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xs flex flex-col gap-6">
           <div className="pb-3 border-b border-slate-100">
             <span className="text-xs font-bold uppercase tracking-wider text-[#086288]">
-              2. Input Parameter Skenario Pengguna
+              2. Kondisi Penumpang & Bagasi Kabin
             </span>
             <h3 className="text-lg font-bold text-slate-900 mt-0.5">
-              Masukkan Jumlah Penumpang & Penumpang Membawa Bagasi Kabin
+              Kondisi Penumpang (100% Kursi Terisi) & Persentase Penumpang Membawa Bagasi
             </h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Ketik secara manual jumlah penumpang dan jumlah penumpang yang membawa bagasi kabin
-              sesuai skenario penerbangan yang ingin Anda evaluasi.
+              Seluruh kursi pesawat diasumsikan terisi penuh (100%) mengikuti kapasitas layout yang
+              dipilih. Masukkan persentase penumpang yang membawa bagasi kabin, dan jumlah orang yang
+              membawa bagasi akan dihitung secara otomatis.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            {/* Input 1: Jumlah Penumpang */}
+            {/* Input 1: Jumlah Penumpang (Otomatis 100% Mengikuti Kapasitas Layout) */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label
@@ -557,89 +545,66 @@ export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
                   className="text-xs font-bold text-slate-800 flex items-center gap-1.5"
                 >
                   <Users className="w-4 h-4 text-[#086288]" />
-                  Jumlah Penumpang (Orang)
+                  Jumlah Penumpang (Otomatis 100% Kursi Terisi)
                 </label>
-                <span className="text-[11px] font-mono text-slate-500">
-                  Rentang: 0 – {selectedLayout.capacity} kursi
-                </span>
-              </div>
-
-              <input
-                id="layout-passenger-count-input"
-                type="number"
-                min={0}
-                max={selectedLayout.capacity}
-                step={1}
-                value={passengerCountInput}
-                onChange={(e) => onChangePassengerCountInput(e.target.value)}
-                placeholder={`Ketik jumlah penumpang (maks. ${selectedLayout.capacity})...`}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold transition-colors focus:outline-none focus:ring-2 ${
-                  passengerError
-                    ? "bg-rose-50/70 border-rose-400 text-rose-950 focus:ring-rose-600"
-                    : "bg-slate-50 border-slate-300 text-slate-900 focus:ring-[#086288]"
-                }`}
-              />
-
-              {passengerError ? (
-                <div
-                  role="alert"
-                  className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2"
-                >
-                  <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
-                  <span>{passengerError}</span>
-                </div>
-              ) : (
-                <div className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    Valid: {validPaxForPreview} penumpang dari kapasitas{" "}
-                    {selectedLayout.capacity} kursi (
-                    {(((validPaxForPreview ?? 0) / selectedLayout.capacity) * 100).toFixed(1)}%
-                    kursi terisi).
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Input 2: Jumlah Penumpang Membawa Bagasi Kabin (Orang) */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="layout-baggage-count-input"
-                  className="text-xs font-bold text-slate-800 flex items-center gap-1.5"
-                >
-                  <Luggage className="w-4 h-4 text-amber-700" />
-                  Jumlah Penumpang Membawa Bagasi Kabin (Orang)
-                </label>
-                <span className="text-[11px] font-mono text-slate-500">
-                  Rentang: 0 –{" "}
-                  {validPaxForPreview !== null ? validPaxForPreview : selectedLayout.capacity}{" "}
-                  orang
+                <span className="text-[11px] font-mono text-[#086288] font-semibold">
+                  Otomatis: {selectedLayout.capacity} kursi
                 </span>
               </div>
 
               <div className="relative flex items-center">
                 <input
-                  id="layout-baggage-count-input"
+                  id="layout-passenger-count-input"
+                  type="text"
+                  readOnly
+                  value={`${selectedLayout.capacity} Orang (100% Kursi Terisi)`}
+                  aria-label="Jumlah Penumpang (Otomatis 100% Kursi Terisi)"
+                  className="w-full px-3.5 py-2.5 rounded-xl border bg-slate-100/90 border-slate-300 text-slate-900 text-sm font-mono font-bold cursor-default focus:outline-none"
+                />
+              </div>
+
+              <div className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  Otomatis mengikuti kapasitas {selectedLayout.name}: seluruh{" "}
+                  {selectedLayout.capacity} kursi terisi penuh (100%).
+                </span>
+              </div>
+            </div>
+
+            {/* Input 2: Persentase Penumpang Membawa Bagasi (%) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="layout-baggage-percent-input"
+                  className="text-xs font-bold text-slate-800 flex items-center gap-1.5"
+                >
+                  <Luggage className="w-4 h-4 text-amber-700" />
+                  Penumpang Membawa Bagasi (%)
+                </label>
+                <span className="text-[11px] font-mono text-slate-500">
+                  Rentang: 0% – 100%
+                </span>
+              </div>
+
+              <div className="relative flex items-center">
+                <input
+                  id="layout-baggage-percent-input"
                   type="number"
                   min={0}
-                  max={validPaxForPreview !== null ? validPaxForPreview : selectedLayout.capacity}
+                  max={100}
                   step={1}
-                  value={baggageCountInput}
-                  onChange={(e) => onChangeBaggageCountInput(e.target.value)}
-                  placeholder={
-                    validPaxForPreview !== null
-                      ? `Ketik 0 hingga ${validPaxForPreview} orang...`
-                      : "Ketik jumlah penumpang berbagasi..."
-                  }
-                  className={`w-full pr-16 px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold transition-colors focus:outline-none focus:ring-2 ${
+                  value={baggagePercentInput}
+                  onChange={(e) => onChangeBaggagePercentInput(e.target.value)}
+                  placeholder="Ketik persentase bagasi (0 - 100%)..."
+                  className={`w-full pr-12 px-3.5 py-2.5 rounded-xl border text-sm font-mono font-bold transition-colors focus:outline-none focus:ring-2 ${
                     baggageError
                       ? "bg-rose-50/70 border-rose-400 text-rose-950 focus:ring-rose-600"
                       : "bg-slate-50 border-slate-300 text-slate-900 focus:ring-[#086288]"
                   }`}
                 />
                 <span className="absolute right-3.5 text-xs font-bold text-slate-500 font-mono">
-                  orang
+                  %
                 </span>
               </div>
 
@@ -655,8 +620,12 @@ export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
                 <div className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    Valid: {validBagForPreview ?? 0} orang membawa bagasi kabin dan{" "}
-                    {Math.max(0, (validPaxForPreview ?? 0) - (validBagForPreview ?? 0))} orang
+                    Dihitung otomatis:{" "}
+                    <strong>{validBagForPreview ?? 0} orang</strong> membawa bagasi kabin (
+                    {validBagPctForPreview ?? 0}%) dan{" "}
+                    <strong>
+                      {Math.max(0, validPaxForPreview - (validBagForPreview ?? 0))} orang
+                    </strong>{" "}
                     tanpa bagasi kabin.
                   </span>
                 </div>
@@ -667,7 +636,7 @@ export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
           {/* Kartu Ringkasan Input Skenario Aktif (Format Rata Tengah: Judul di Atas, Nilai di Bawah) */}
           <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-3.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 text-center sm:text-left">
-              Ringkasan Input Skenario Aktif
+              Ringkasan Kondisi Penerbangan Aktif
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Kartu 1: Kapasitas Maksimum Pesawat */}
@@ -680,28 +649,20 @@ export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
                 </strong>
               </div>
 
-              {/* Kartu 2: Jumlah Penumpang yang Dimasukkan */}
+              {/* Kartu 2: Jumlah Penumpang (Otomatis 100%) */}
               <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex flex-col items-center justify-center text-center gap-1.5">
                 <span className="text-xs font-semibold text-slate-500">
-                  Jumlah Penumpang yang Dimasukkan
+                  Kondisi Penumpang (100% Terisi)
                 </span>
-                <strong
-                  className={`text-xl sm:text-2xl font-bold font-mono ${
-                    validPaxForPreview !== null && validPaxForPreview > 0
-                      ? "text-slate-900"
-                      : "text-slate-400 text-base sm:text-lg"
-                  }`}
-                >
-                  {validPaxForPreview !== null && validPaxForPreview > 0
-                    ? `${validPaxForPreview} Orang`
-                    : "Belum valid"}
+                <strong className="text-xl sm:text-2xl font-bold font-mono text-slate-900">
+                  {validPaxForPreview} Orang
                 </strong>
               </div>
 
-              {/* Kartu 3: Jumlah Penumpang Membawa Bagasi Kabin */}
+              {/* Kartu 3: Penumpang Membawa Bagasi (Otomatis) */}
               <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex flex-col items-center justify-center text-center gap-1.5">
                 <span className="text-xs font-semibold text-slate-500">
-                  Jumlah Penumpang Membawa Bagasi Kabin
+                  Penumpang Membawa Bagasi
                 </span>
                 <strong
                   className={`text-xl sm:text-2xl font-bold font-mono ${
@@ -711,7 +672,7 @@ export const AircraftLayoutView: React.FC<AircraftLayoutViewProps> = ({
                   }`}
                 >
                   {validBagForPreview !== null && !baggageError
-                    ? `${validBagForPreview} Orang`
+                    ? `${validBagForPreview} Orang (${validBagPctForPreview}%)`
                     : "Belum valid"}
                 </strong>
               </div>

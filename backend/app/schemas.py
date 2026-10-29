@@ -3,7 +3,7 @@ Pydantic Request & Response Schemas for ZoneFlow API.
 """
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SimulationParameters(BaseModel):
@@ -18,22 +18,26 @@ class SimulationParameters(BaseModel):
 
 
 class CustomZoneConfig(BaseModel):
-    boundaries: List[int] = Field(..., min_length=2, max_length=2, description="Dua titik batas baris [b1, b2]")
-    zone_order: List[int] = Field(..., min_length=3, max_length=3, description="Permutasi ID zona [z1, z2, z3]")
+    boundaries: List[int] = Field(..., min_length=0, max_length=29, description="Titik batas baris menaik [b1, ..., b_{K-1}]")
+    zone_order: List[int] = Field(..., min_length=1, max_length=30, description="Permutasi ID zona [z1, ..., zK]")
+    internal_rule: Optional[str] = Field(default="WMA_IN_ZONE", description="Aturan urutan di dalam zona ('WMA_IN_ZONE' atau 'BTF_IN_ZONE')")
 
     @field_validator("boundaries")
     @classmethod
     def validate_boundaries(cls, v: List[int]) -> List[int]:
-        if not (1 <= v[0] < v[1] < 30):
-            raise ValueError("Batas baris harus menaik dan di dalam rentang baris 1-29")
+        for idx, b in enumerate(v):
+            if not (1 <= b < 30):
+                raise ValueError("Batas baris harus berada di dalam rentang baris 1-29")
+            if idx > 0 and b <= v[idx - 1]:
+                raise ValueError("Batas baris harus menaik secara ketat")
         return v
 
-    @field_validator("zone_order")
-    @classmethod
-    def validate_order(cls, v: List[int]) -> List[int]:
-        if sorted(v) != [1, 2, 3]:
-            raise ValueError("Urutan zona harus merupakan permutasi dari [1, 2, 3]")
-        return v
+    @model_validator(mode="after")
+    def validate_order(self) -> "CustomZoneConfig":
+        k_zones = len(self.boundaries) + 1
+        if sorted(self.zone_order) != list(range(1, k_zones + 1)):
+            raise ValueError(f"Urutan zona harus merupakan permutasi dari 1..{k_zones}")
+        return self
 
 
 class SimulateRequest(BaseModel):
@@ -316,5 +320,100 @@ class GAJobStatusResponse(BaseModel):
     top_candidates: Optional[List[CandidateConfigModel]] = None
     execution_time_seconds: Optional[float] = None
     error_message: Optional[str] = None
+
+
+# ============================================================================
+# Schemas untuk AZBO V2 (Blueprint AZBO & Audit ZoneFlow)
+# ============================================================================
+
+class AzboV2OptimizeRequest(BaseModel):
+    layout_id: str = Field(default="b737-800-180", description="ID konfigurasi layout pesawat")
+    layout_name: str = Field(default="Boeing 737-800 / Airbus A320-200", description="Nama layout pesawat")
+    rows: int = Field(default=30, ge=1, le=80, description="Jumlah baris kabin (N)")
+    left_seats: int = Field(default=3, ge=1, le=3, description="Jumlah kursi sisi kiri per baris")
+    right_seats: int = Field(default=3, ge=1, le=3, description="Jumlah kursi sisi kanan per baris")
+    left_letters: Optional[List[str]] = None
+    right_letters: Optional[List[str]] = None
+    bag_ratio: float = Field(default=0.70, ge=0.0, le=1.0, description="Proporsi penumpang membawa bagasi (0.0 - 1.0)")
+    row_pitch_m: float = Field(default=0.8, gt=0.0, le=5.0, description="Jarak antarbaris (pitch) dalam meter")
+    cell_m: float = Field(default=0.4, gt=0.0, le=5.0, description="Panjang satu sel lorong dalam meter")
+    ga_population: int = Field(default=10, ge=4, le=100, description="Ukuran populasi GA variabel K")
+    ga_generations: int = Field(default=5, ge=1, le=100, description="Jumlah generasi GA variabel K")
+    train_reps: int = Field(default=3, ge=1, le=50, description="Jumlah replikasi TRAINING per kandidat GA")
+    test_reps: int = Field(default=15, ge=2, le=200, description="Jumlah replikasi TESTING baru untuk evaluasi akhir")
+    zone_call_overhead_s: float = Field(default=0.0, ge=0.0, le=120.0, description="Penundaan opsional pergantian zona (detik)")
+    seed: int = Field(default=20261028, ge=0, description="Seed dasar untuk reproduksibilitas")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_request_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        if "rows" not in normalized and "n_rows" in normalized:
+            normalized["rows"] = normalized.pop("n_rows")
+        if isinstance(normalized.get("left_seats"), list):
+            letters = [str(x) for x in normalized["left_seats"]]
+            normalized["left_letters"] = normalized.get("left_letters") or letters
+            normalized["left_seats"] = len(letters)
+        if isinstance(normalized.get("right_seats"), list):
+            letters = [str(x) for x in normalized["right_seats"]]
+            normalized["right_letters"] = normalized.get("right_letters") or letters
+            normalized["right_seats"] = len(letters)
+        if "ga_population" not in normalized:
+            if "population_size" in normalized:
+                normalized["ga_population"] = normalized.pop("population_size")
+            elif "pop_size" in normalized:
+                normalized["ga_population"] = normalized.pop("pop_size")
+        if "ga_generations" not in normalized and "generations" in normalized:
+            normalized["ga_generations"] = normalized.pop("generations")
+        if "train_reps" not in normalized and "train_replications" in normalized:
+            normalized["train_reps"] = normalized.pop("train_replications")
+        if "test_reps" not in normalized and "test_replications" in normalized:
+            normalized["test_reps"] = normalized.pop("test_replications")
+        if "seed" not in normalized and "base_seed" in normalized:
+            normalized["seed"] = normalized.pop("base_seed")
+        return normalized
+
+
+class AzboV2HealthResponse(BaseModel):
+    status: str = "online"
+    engine: str = "AZBO V2 Python Engine (azbo_core)"
+    version: str = "2.0.0"
+    supported_strategies: List[str] = [
+        "ZONE",
+        "WMA",
+        "BTF",
+        "RANDOM",
+        "REVERSE_PYRAMID",
+        "STEFFEN",
+        "ROTATING_ZONES",
+        "MODIFIED_OPTIMAL",
+        "FRONT_TO_BACK",
+        "BLOCKS_4_ROWS",
+        "DOUBLE_OUTSIDE_IN",
+        "BTF_WMA_FIXED",
+    ]
+
+
+class AzboV2OptimizeResponse(BaseModel):
+    status: str = "success"
+    engine: str = "AZBO V2 Python Engine (azbo_core)"
+    execution_time_seconds: float
+    scenario: Dict[str, Any]
+    optimization: Dict[str, Any]
+    recommendation: Dict[str, Any]
+    animation: Dict[str, Any]
+
+
+class AzboV2JobStatusResponse(BaseModel):
+    job_id: str
+    status: str = Field(description="'running', 'completed', 'cancelled', or 'failed'")
+    progress_percent: float = 0.0
+    progress_message: str = "Mempersiapkan simulasi..."
+    elapsed_time_seconds: float = 0.0
+    result: Optional[AzboV2OptimizeResponse] = None
+    error_message: Optional[str] = None
+
 
 

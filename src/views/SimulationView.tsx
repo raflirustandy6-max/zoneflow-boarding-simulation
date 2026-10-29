@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
   Play,
   Luggage,
@@ -13,117 +13,85 @@ import {
 } from "lucide-react";
 import {
   AircraftLayoutConfig,
-  BOARDING_METHOD_CATALOG,
-  WALK_PER_ROW_S,
-  ENTRY_GAP_S,
-  SIT_TIME_S,
   WEIBULL_SCALE_S,
   WEIBULL_SHAPE,
-  MOVES_ONE_BLOCKER,
-  MOVES_TWO_BLOCKERS,
-  MOVEMENT_TICK_S,
 } from "../simulation/engine";
 
 interface SimulationViewProps {
   selectedLayout: AircraftLayoutConfig;
   passengerCountInput: string;
-  baggageCountInput: string;
+  baggagePercentInput: string;
+  computedBaggageCount: number;
   passengerError: string | null;
   baggageError: string | null;
-  onRunSimulationAndAzbo: () => { ok: boolean; error?: string };
+  isEvaluating: boolean;
+  evaluationProgressMessage: string;
+  evaluationProgressPercent: number;
+  onRunSimulationAndAzbo: () => Promise<{ ok: boolean; error?: string }>;
   onNavigateToResults: () => void;
   onBackToAircraftLayout: () => void;
 }
 
 export const SimulationView: React.FC<SimulationViewProps> = ({
   selectedLayout,
-  passengerCountInput,
-  baggageCountInput,
+  baggagePercentInput,
+  computedBaggageCount,
   passengerError,
   baggageError,
+  isEvaluating,
+  evaluationProgressMessage,
+  evaluationProgressPercent,
   onRunSimulationAndAzbo,
   onNavigateToResults,
   onBackToAircraftLayout,
 }) => {
-  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
 
-  const parsedPax =
-    passengerCountInput.trim() === "" ? NaN : Number(passengerCountInput.trim());
-  const parsedBag =
-    baggageCountInput.trim() === "" ? NaN : Number(baggageCountInput.trim());
+  const parsedBagPct =
+    baggagePercentInput.trim() === "" ? NaN : Number(baggagePercentInput.trim());
 
   const isInputValid =
     !passengerError &&
     !baggageError &&
-    Number.isInteger(parsedPax) &&
-    parsedPax > 0 &&
-    parsedPax <= selectedLayout.capacity &&
-    Number.isInteger(parsedBag) &&
-    parsedBag >= 0 &&
-    parsedBag <= parsedPax;
+    !Number.isNaN(parsedBagPct) &&
+    parsedBagPct >= 0 &&
+    parsedBagPct <= 100;
 
-  const effectivePaxCount = isInputValid ? parsedPax : null;
-  const effectiveBagCount = isInputValid ? parsedBag : null;
+  const effectivePaxCount = selectedLayout.capacity;
+  const effectiveBagCount = isInputValid ? computedBaggageCount : null;
+  const effectiveBagPct = isInputValid ? parsedBagPct : null;
   const withoutBagCount =
-    effectivePaxCount !== null && effectiveBagCount !== null
+    effectiveBagCount !== null
       ? Math.max(0, effectivePaxCount - effectiveBagCount)
       : null;
-  const emptySeatCount =
-    effectivePaxCount !== null
-      ? Math.max(0, selectedLayout.capacity - effectivePaxCount)
-      : null;
-  const occupancyRatePct =
-    effectivePaxCount !== null
-      ? ((effectivePaxCount / selectedLayout.capacity) * 100).toFixed(1)
-      : null;
 
-  const supportedMethodsCount = useMemo(
-    () => BOARDING_METHOD_CATALOG.filter((m) => m.supportedInSimulator).length,
-    []
-  );
-
-  const walkPerRowLabel = WALK_PER_ROW_S.toString().replace(".", ",");
-  const sitTimeLabel = SIT_TIME_S.toString().replace(".", ",");
-  const oneBlockerDelayLabel = (MOVES_ONE_BLOCKER * MOVEMENT_TICK_S)
-    .toFixed(1)
-    .replace(".", ",");
-  const twoBlockersDelayLabel = (MOVES_TWO_BLOCKERS * MOVEMENT_TICK_S)
-    .toFixed(1)
-    .replace(".", ",");
-
-  const handleExecuteEvaluation = () => {
+  const handleExecuteEvaluation = async () => {
     setEvaluationError(null);
 
     if (!isInputValid) {
       setEvaluationError(
-        passengerError ||
-          baggageError ||
-          "Input skenario belum valid. Silakan periksa kembali jumlah penumpang dan jumlah penumpang pembawa bagasi di halaman Pesawat."
+        baggageError ||
+          "Persentase penumpang membawa bagasi belum valid. Silakan periksa kembali di halaman Pesawat."
       );
       return;
     }
 
-    setIsEvaluating(true);
     try {
-      const result = onRunSimulationAndAzbo();
+      const result = await onRunSimulationAndAzbo();
       if (!result.ok) {
         setEvaluationError(
           result.error ||
-            "Evaluasi gagal dijalankan. Silakan periksa input skenario Anda di halaman Pesawat."
+            "Simulasi gagal dijalankan. Pastikan server simulasi Python aktif dan coba kembali."
         );
-        setIsEvaluating(false);
         return;
       }
-      setIsEvaluating(false);
       onNavigateToResults();
     } catch (err) {
       setEvaluationError(
         err instanceof Error
           ? err.message
-          : "Terjadi kesalahan saat mengevaluasi skenario."
+          : "Terjadi kesalahan saat menjalankan simulasi boarding."
       );
-      setIsEvaluating(false);
     }
   };
 
@@ -135,14 +103,14 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-[#086288]">
-              Ringkasan Skenario & Parameter Simulasi
+              Simulasi Boarding
             </span>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
-              Verifikasi Skenario Sebelum Menjalankan Evaluasi
+              Ringkasan Kondisi Penerbangan Sebelum Menjalankan Simulasi
             </h2>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Periksa kembali konfigurasi pesawat, jumlah penumpang, dan jumlah penumpang pembawa
-              bagasi kabin yang telah Anda tetapkan sebelum menjalankan evaluasi metode boarding.
+              Periksa kembali pilihan pesawat, kondisi penumpang, dan persentase penumpang membawa
+              bagasi sebelum menjalankan simulasi boarding.
             </p>
           </div>
 
@@ -152,18 +120,18 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
             className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs inline-flex items-center gap-2 transition-colors self-start sm:self-auto shrink-0 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Ubah Input Skenario</span>
+            <span>Ubah Kondisi Penerbangan</span>
           </button>
         </div>
 
-        {/* 3 Informasi Skenario Utama: Layout Pesawat, Jumlah Penumpang, Bagasi Kabin */}
+        {/* 3 Informasi Skenario Utama: Pilih Pesawat, Kondisi Penumpang, Penumpang Membawa Bagasi */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Informasi 1: Layout Pesawat */}
+          {/* Informasi 1: Pilih Pesawat */}
           <div className="p-5 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex flex-col justify-between gap-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-[#086288] block">
-                  Layout Pesawat
+                  Pilih Pesawat
                 </span>
                 <h3 className="text-base font-bold text-slate-900 mt-1">
                   {selectedLayout.name}
@@ -205,22 +173,18 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
             </div>
           </div>
 
-          {/* Informasi 2: Jumlah Penumpang */}
+          {/* Informasi 2: Kondisi Penumpang */}
           <div className="p-5 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex flex-col justify-between gap-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-[#086288] block">
-                  Jumlah Penumpang
+                  Kondisi Penumpang
                 </span>
                 <div className="text-2xl font-bold text-slate-900 tabular-nums mt-1">
-                  {effectivePaxCount !== null
-                    ? `${effectivePaxCount} Orang`
-                    : passengerCountInput.trim() === ""
-                    ? "Belum Diisi"
-                    : `${passengerCountInput} (Tidak Valid)`}
+                  {effectivePaxCount} Orang
                 </div>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Penumpang yang memasuki kabin melalui pintu depan (1L)
+                  Seluruh kursi diasumsikan terisi penuh melalui pintu depan (1L)
                 </p>
               </div>
               <div className="p-2.5 rounded-xl bg-sky-100/80 text-[#086288] shrink-0">
@@ -234,38 +198,32 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
                   Tingkat Keterisian Kursi
                 </span>
                 <strong className="tabular-nums text-slate-900">
-                  {occupancyRatePct !== null
-                    ? `${occupancyRatePct}% (${effectivePaxCount}/${selectedLayout.capacity})`
-                    : "Belum valid"}
+                  100% ({effectivePaxCount}/{selectedLayout.capacity})
                 </strong>
               </div>
               <div className="p-2.5 rounded-xl bg-white border border-slate-200/60">
                 <span className="text-[11px] text-slate-500 block">
                   Kursi Kosong
                 </span>
-                <strong className="tabular-nums text-slate-900">
-                  {emptySeatCount !== null ? `${emptySeatCount} Kursi` : "Belum valid"}
-                </strong>
+                <strong className="tabular-nums text-slate-900">0 Kursi</strong>
               </div>
             </div>
           </div>
 
-          {/* Informasi 3: Bagasi Kabin */}
+          {/* Informasi 3: Penumpang Membawa Bagasi */}
           <div className="p-5 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex flex-col justify-between gap-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-800 block">
-                  Bagasi Kabin
+                  Penumpang Membawa Bagasi
                 </span>
                 <div className="text-2xl font-bold text-slate-900 tabular-nums mt-1">
                   {effectiveBagCount !== null
-                    ? `${effectiveBagCount} Orang`
-                    : baggageCountInput.trim() === ""
-                    ? "Belum Diisi"
-                    : `${baggageCountInput} (Tidak Valid)`}
+                    ? `${effectiveBagCount} Orang (${effectiveBagPct}%)`
+                    : "Belum Valid"}
                 </div>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Jumlah penumpang yang menyimpan bagasi di kompartemen atas
+                  Dihitung otomatis dari persentase penumpang pembawa bagasi kabin
                 </p>
               </div>
               <div className="p-2.5 rounded-xl bg-amber-100/80 text-amber-800 shrink-0">
@@ -299,14 +257,14 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
           <div className="flex items-start justify-between gap-3">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-[#086288] block">
-                Parameter Gerakan dan Waktu
+                Parameter Pergerakan Penumpang
               </span>
               <h3 className="text-base font-bold text-slate-900 mt-0.5">
-                Acuan Waktu Pergerakan Penumpang di Dalam Kabin
+                Acuan Pergerakan Penumpang di Dalam Kabin
               </h3>
               <p className="text-xs text-slate-600 mt-0.5">
-                Parameter berikut diterapkan secara seragam saat menguji seluruh {supportedMethodsCount}{" "}
-                metode boarding dan pembagian zona.
+                Aturan pergerakan berikut diterapkan secara seragam saat membandingkan setiap metode
+                boarding.
               </p>
             </div>
             <div className="p-2.5 rounded-xl bg-sky-100/80 text-[#086288] shrink-0">
@@ -316,19 +274,19 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
 
           {/* 4 Kartu Kecil Rata Tengah (Judul di Atas, Nilai Utama di Bawah, Keterangan Jelas) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {/* Parameter 1: Waktu berjalan per baris */}
+            {/* Parameter 1: Kecepatan berjalan di lorong */}
             <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex flex-col items-center justify-between text-center gap-2">
               <div className="flex flex-col items-center gap-1">
                 <span className="text-xs font-semibold text-slate-600">
-                  Waktu berjalan per baris
+                  Berjalan di lorong kabin
                 </span>
-                <strong className="text-lg sm:text-xl font-bold text-[#086288] tabular-nums">
-                  {walkPerRowLabel} detik / baris
+                <strong className="text-base sm:text-lg font-bold text-[#086288] tabular-nums">
+                  Antrean Berurutan
                 </strong>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Menunjukkan perkiraan waktu yang dibutuhkan penumpang untuk bergerak melewati satu
-                baris kabin.
+                Penumpang berjalan satu per satu di lorong tanpa saling mendahului dan berhenti saat
+                lorong di depannya sedang penuh.
               </p>
             </div>
 
@@ -339,66 +297,67 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
                   Waktu menyimpan bagasi
                 </span>
                 <strong className="text-sm sm:text-base font-bold text-[#086288]">
-                  Waktu menyimpan bagasi bervariasi antarpenumpang
+                  Bervariasi Antarpenumpang
                 </strong>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Menunjukkan waktu yang dibutuhkan penumpang untuk menyimpan bagasi sebelum menuju
-                kursinya. Simulator menggunakan variasi waktu agar proses tidak selalu sama.
+                Selama penumpang menyimpan tas di kompartemen atas, lorong pada baris tersebut
+                tertahan sementara bagi penumpang di belakangnya.
               </p>
             </div>
 
-            {/* Parameter 3: Waktu duduk */}
+            {/* Parameter 3: Waktu masuk ke kursi */}
             <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex flex-col items-center justify-between text-center gap-2">
               <div className="flex flex-col items-center gap-1">
                 <span className="text-xs font-semibold text-slate-600">
-                  Waktu duduk
+                  Waktu masuk ke kursi
                 </span>
-                <strong className="text-lg sm:text-xl font-bold text-[#086288] tabular-nums">
-                  {sitTimeLabel} detik
+                <strong className="text-base sm:text-lg font-bold text-[#086288] tabular-nums">
+                  1,8 – 3,0 detik
                 </strong>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Menunjukkan perkiraan waktu yang dibutuhkan penumpang untuk duduk di kursinya.
+                Perkiraan waktu dasar ketika penumpang langsung duduk ke kursinya tanpa terhalang
+                penumpang lain.
               </p>
             </div>
 
-            {/* Parameter 4: Waktu tambahan akibat hambatan kursi */}
+            {/* Parameter 4: Hambatan kursi terisi */}
             <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs flex flex-col items-center justify-between text-center gap-2">
               <div className="flex flex-col items-center gap-1">
                 <span className="text-xs font-semibold text-slate-600">
-                  Waktu tambahan akibat hambatan kursi
+                  Hambatan kursi terisi
                 </span>
                 <strong className="text-sm sm:text-base font-bold text-[#086288] tabular-nums">
-                  +{oneBlockerDelayLabel} dtk (1 kursi) / +{twoBlockersDelayLabel} dtk (2 kursi)
+                  Bertambah jika Terhalang
                 </strong>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Menunjukkan waktu tambahan pada simulator ketika penumpang perlu menunggu karena
-                akses menuju kursinya terhalang penumpang lain.
+                Waktu duduk menjadi lebih lama apabila penumpang kursi tengah atau jendela harus
+                melewati penumpang yang sudah duduk di dekat lorong.
               </p>
             </div>
           </div>
 
-          {/* Detail Teknis Opsional yang Dapat Dibuka untuk Transparansi Audit Model */}
+          {/* Detail Teknis Opsional yang Dapat Dibuka untuk Transparansi Penelitian */}
           <details className="text-xs text-slate-500 bg-white/80 rounded-xl border border-slate-200/70 px-4 py-2.5">
             <summary className="font-semibold text-slate-600 cursor-pointer select-none">
-              Detail teknis parameter model simulator (untuk keperluan audit teknis)
+              Rincian teknis parameter model simulasi (opsional)
             </summary>
             <div className="mt-2 pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 leading-relaxed">
               <div>
-                • <strong>Jeda masuk antrean pintu depan:</strong> {ENTRY_GAP_S} detik antarpenumpang
-                (langkah pergerakan lorong {MOVEMENT_TICK_S} detik).
+                • <strong>Grid lorong & langkah waktu:</strong> Jarak antarbaris 0,8 m (2 sel lorong
+                @ 0,4 m per baris, kapasitas 1 penumpang/sel) dengan langkah waktu Δt = 0,25 detik.
               </div>
               <div>
-                • <strong>Distribusi waktu simpan bagasi:</strong> Distribusi Weibull dengan skala{" "}
-                {WEIBULL_SCALE_S} detik dan parameter bentuk {WEIBULL_SHAPE}.
+                • <strong>Kecepatan jalan & waktu bagasi:</strong> Kecepatan bebas Normal Terpotong
+                (rata-rata 0,8 m/dtk, simpangan 0,1 m/dtk pada (0, 0,8] m/dtk); waktu simpan bagasi
+                Weibull (skala {WEIBULL_SCALE_S} detik, bentuk {WEIBULL_SHAPE}).
               </div>
               <div className="sm:col-span-2">
-                • <strong>Perhitungan waktu tambahan hambatan kursi pada simulator:</strong>{" "}
-                {MOVES_ONE_BLOCKER} langkah ({oneBlockerDelayLabel} detik) bila terhalang 1 kursi, dan{" "}
-                {MOVES_TWO_BLOCKERS} langkah ({twoBlockersDelayLabel} detik) bila terhalang 2 kursi
-                (nilai parameter model simulasi, bukan nilai pasti di lapangan).
+                • <strong>Gerakan masuk kursi:</strong> Durasi per gerakan Triangular(1,8; 2,4; 3,0)
+                detik sebanyak 1 gerakan (tanpa penghalang), 5 gerakan (1 penghalang duduk), atau 9
+                gerakan (2 penghalang duduk).
               </div>
             </div>
           </details>
@@ -411,14 +370,15 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
                 <span className="font-bold block text-sm text-emerald-950">
-                  Status Validasi: Konfigurasi Skenario Siap Dievaluasi
+                  Kondisi Penerbangan Siap Disimulasikan
                 </span>
                 <p className="text-emerald-900/90 leading-relaxed">
-                  Skenario <strong>{selectedLayout.name}</strong> dengan{" "}
-                  <strong>{effectivePaxCount} penumpang</strong> dan{" "}
-                  <strong>{effectiveBagCount} orang membawa bagasi kabin</strong> telah tervalidasi.
-                  Sistem siap mengevaluasi seluruh {supportedMethodsCount} metode boarding yang
-                  didukung beserta optimasi zona AZBO.
+                  Pesawat <strong>{selectedLayout.name}</strong> dengan{" "}
+                  <strong>{effectivePaxCount} penumpang (100% kursi terisi)</strong> dan{" "}
+                  <strong>
+                    {effectiveBagCount} orang ({effectiveBagPct}%) membawa bagasi kabin
+                  </strong>{" "}
+                  siap diuji untuk menentukan metode dan urutan boarding tercepat.
                 </p>
               </div>
             </div>
@@ -435,17 +395,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
               <AlertCircle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <span className="font-bold block text-sm text-rose-950">
-                  Status Validasi: Input Skenario Perlu Diperbaiki
+                  Input Kondisi Penerbangan Perlu Diperbaiki
                 </span>
                 <ul className="list-disc list-inside space-y-0.5 text-rose-900">
-                  {passengerError && <li>{passengerError}</li>}
                   {baggageError && <li>{baggageError}</li>}
-                  {!passengerError && !baggageError && (
-                    <li>
-                      Masukkan jumlah penumpang minimal 1 orang dan jumlah penumpang berbagasi
-                      yang valid di halaman Pesawat.
-                    </li>
-                  )}
                 </ul>
               </div>
             </div>
@@ -454,12 +407,38 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
               onClick={onBackToAircraftLayout}
               className="px-4 py-2.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs shrink-0 transition-colors cursor-pointer self-start sm:self-center"
             >
-              Perbaiki Input Skenario
+              Perbaiki di Menu Pesawat
             </button>
           </div>
         )}
 
-        {/* Pesan Error Eksekusi (Jika Evaluasi Gagal) */}
+        {/* Indikator Progres Nyata saat Backend Python Berjalan */}
+        {isEvaluating && (
+          <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#086288]">
+              <span className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 animate-spin shrink-0" />
+                <span>
+                  {evaluationProgressMessage ||
+                    "Menjalankan simulasi dan mencari urutan zona terbaik..."}
+                </span>
+              </span>
+              <span className="font-mono font-bold">
+                {Math.round(evaluationProgressPercent)}%
+              </span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-sky-200/70 overflow-hidden">
+              <div
+                className="h-full bg-[#086288] transition-all duration-300 rounded-full"
+                style={{
+                  width: `${Math.max(5, Math.min(100, evaluationProgressPercent))}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Pesan Error Eksekusi (Jika Backend Tidak Tersedia atau Gagal) */}
         {evaluationError && (
           <div
             role="alert"
@@ -467,19 +446,19 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
           >
             <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold block">Evaluasi Gagal Dijalankan:</span>
+              <span className="font-bold block">Simulasi Tidak Dapat Dijalankan:</span>
               <span>{evaluationError}</span>
             </div>
           </div>
         )}
 
-        {/* Area Tombol Utama Pelaksanaan Evaluasi & Optimasi AZBO */}
+        {/* Area Tombol Utama Jalankan Simulasi */}
         <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <ShieldCheck className="w-4 h-4 text-[#086288] shrink-0" />
             <span>
-              Seluruh kandidat metode diuji pada penempatan kursi dan distribusi bagasi yang sama
-              persis sebelum menentukan rekomendasi di halaman Hasil.
+              Setiap metode boarding diuji menggunakan kondisi penumpang dan distribusi bagasi yang
+              sama persis sebelum menentukan rekomendasi di halaman Hasil.
             </span>
           </div>
 
@@ -496,12 +475,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
             {isEvaluating ? (
               <>
                 <Cpu className="w-4 h-4 animate-spin" />
-                <span>Menjalankan Evaluasi & Optimasi AZBO...</span>
+                <span>Menjalankan Simulasi...</span>
               </>
             ) : (
               <>
                 <Play className="w-4 h-4 fill-current" />
-                <span>Jalankan Evaluasi & Optimasi AZBO</span>
+                <span>Jalankan Simulasi</span>
               </>
             )}
           </button>
@@ -510,3 +489,4 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
     </div>
   );
 };
+

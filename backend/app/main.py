@@ -26,7 +26,7 @@ from .schemas import (
     ExhaustiveCandidatesResponse, CandidateConfigModel,
     TrainingConfigModel, StoredReferenceModel,
     GAStartRequest, GAJobStatusResponse, GAParametersModel,
-    GAGenerationRecordModel, ExhaustiveComparisonModel
+    GAGenerationRecordModel, ExhaustiveComparisonModel,
 )
 from .simulation_core import (
     generate_passengers, build_passenger_order,
@@ -36,6 +36,7 @@ from .simulation_core import (
     run_genetic_algorithm,
     VALID_ZONE_SIZES
 )
+from .azbo_v2_routes import azbo_v2_router
 
 app = FastAPI(
     title="ZoneFlow Simulation Backend API",
@@ -648,5 +649,14 @@ def cancel_ga_job(job_id: str):
         current_status = job["status"]
 
     return {"status": current_status, "message": f"Job GA '{job_id}' berstatus {current_status}."}
+
+
+# ==============================================================================
+# ENDPOINT UTAMA AZBO V2 (BLUEPRINT AZBO BAGIAN 9.1 & 9.2)
+# Diintegrasikan melalui router tunggal `azbo_v2_router` (`azbo_v2_routes.py`)
+# yang memanggil `run_azbo_v2_evaluation` pada `azbo_core.py`.
+# ==============================================================================
+app.include_router(azbo_v2_router)
+
 
 

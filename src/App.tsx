@@ -15,7 +15,8 @@ import {
   AircraftLayoutConfig,
   BASE_SEED,
   AzboOptimizationSummary,
-  runAzboOptimizationForScenario,
+  computeDeterministicBaggageCount,
+  runAzboV2EvaluationViaBackend,
 } from "./simulation/engine";
 
 const DEMO_SESSION_STORAGE_KEY = "zoneflow_demo_session_v3";
@@ -35,80 +36,66 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>("aircraft");
   const [isInfoModalOpen, setIsInfoModalOpen] = useState<boolean>(false);
 
-  // 3. State Konfigurasi Pesawat & Input Manual (Sumber Data Utama dari Menu 1)
+  // 3. State Konfigurasi Pesawat & Persentase Bagasi (Sesuai Blueprint AZBO: 100% Kursi Terisi)
   const [selectedLayout, setSelectedLayout] = useState<AircraftLayoutConfig>(
     AIRCRAFT_LAYOUTS[0]
   );
-  const [passengerCountInput, setPassengerCountInput] = useState<string>("");
-  const [baggageCountInput, setBaggageCountInput] = useState<string>("");
+  // Persentase penumpang membawa bagasi kabin (0 - 100%), default 70%
+  const [baggagePercentInput, setBaggagePercentInput] = useState<string>("70");
 
-  // Seed deterministik internal untuk konsistensi perbandingan antar-metode
+  // Jumlah penumpang otomatis mengikuti kapasitas layout (100% kursi terisi)
+  const passengerCountInput = String(selectedLayout.capacity);
+
+  // Seed deterministik internal untuk reproduksibilitas
   const seed = BASE_SEED;
 
-  // 4. Hasil Evaluasi & Optimasi AZBO untuk Skenario yang Dijalankan
+  // 4. Hasil Evaluasi & Optimasi AZBO V2 dari Backend Python
   const [azboSummary, setAzboSummary] =
     useState<AzboOptimizationSummary | null>(null);
   const [lastEvaluatedScenarioKey, setLastEvaluatedScenarioKey] =
     useState<string>("");
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [evaluationProgressMessage, setEvaluationProgressMessage] =
+    useState<string>("");
+  const [evaluationProgressPercent, setEvaluationProgressPercent] =
+    useState<number>(0);
 
-  // Validasi Jumlah Penumpang terhadap Kapasitas Layout Aktif
-  const passengerError = useMemo((): string | null => {
-    const trimmed = passengerCountInput.trim();
-    if (trimmed === "") {
-      return `Masukkan jumlah penumpang secara manual (1 hingga ${selectedLayout.capacity} kursi untuk ${selectedLayout.name}).`;
-    }
-    const num = Number(trimmed);
-    if (Number.isNaN(num) || !Number.isInteger(num)) {
-      return "Jumlah penumpang harus berupa bilangan bulat.";
-    }
-    if (num < 0) {
-      return "Jumlah penumpang tidak boleh bernilai negatif.";
-    }
-    if (num === 0) {
-      return "Jumlah penumpang saat ini 0 orang. Masukkan minimal 1 penumpang untuk menjalankan simulasi boarding.";
-    }
-    if (num > selectedLayout.capacity) {
-      return `Jumlah penumpang (${num} orang) melebihi kapasitas kursi ${selectedLayout.name} (maksimum ${selectedLayout.capacity} kursi). Silakan kurangi jumlah penumpang.`;
-    }
-    return null;
-  }, [passengerCountInput, selectedLayout]);
-
-  // Validasi Jumlah Penumpang Membawa Bagasi Kabin (Orang)
+  // Validasi Persentase Penumpang Membawa Bagasi (0% hingga 100%)
   const baggageError = useMemo((): string | null => {
-    const trimmedBag = baggageCountInput.trim();
-    const trimmedPax = passengerCountInput.trim();
-    const paxNum = trimmedPax === "" ? NaN : Number(trimmedPax);
-    const hasValidPaxCount =
-      Number.isInteger(paxNum) &&
-      paxNum >= 0 &&
-      paxNum <= selectedLayout.capacity;
-
-    if (trimmedBag === "") {
-      const maxLabel = hasValidPaxCount ? paxNum : selectedLayout.capacity;
-      return `Masukkan jumlah penumpang membawa bagasi kabin secara manual (0 hingga ${maxLabel} orang).`;
+    const trimmed = baggagePercentInput.trim();
+    if (trimmed === "") {
+      return "Masukkan persentase penumpang yang membawa bagasi kabin (0% hingga 100%).";
     }
-
-    const bagNum = Number(trimmedBag);
-    if (Number.isNaN(bagNum) || !Number.isInteger(bagNum)) {
-      return "Jumlah penumpang membawa bagasi kabin harus berupa bilangan bulat (orang).";
+    const pct = Number(trimmed);
+    if (Number.isNaN(pct)) {
+      return "Persentase penumpang membawa bagasi harus berupa angka (0 hingga 100).";
     }
-    if (bagNum < 0) {
-      return "Jumlah penumpang membawa bagasi kabin tidak boleh bernilai negatif.";
+    if (pct < 0) {
+      return "Persentase penumpang membawa bagasi tidak boleh kurang dari 0%.";
     }
-    if (hasValidPaxCount && bagNum > paxNum) {
-      return `Jumlah penumpang membawa bagasi kabin (${bagNum} orang) tidak boleh melebihi jumlah penumpang (${paxNum} orang).`;
-    }
-    if (!hasValidPaxCount && bagNum > selectedLayout.capacity) {
-      return `Jumlah penumpang membawa bagasi kabin (${bagNum} orang) melebihi kapasitas maksimum pesawat (${selectedLayout.capacity} kursi).`;
+    if (pct > 100) {
+      return "Persentase penumpang membawa bagasi tidak boleh melebihi 100%.";
     }
     return null;
-  }, [baggageCountInput, passengerCountInput, selectedLayout]);
+  }, [baggagePercentInput]);
+
+  // Jumlah penumpang otomatis 100% terisi sehingga selalu valid
+  const passengerError: string | null = null;
+
+  // Jumlah orang yang membawa bagasi dihitung secara otomatis: floor(n * (pct/100) + 0.5)
+  const computedBaggagePassengerCount = useMemo((): number => {
+    if (baggageError) return 0;
+    const pct = Number(baggagePercentInput.trim());
+    return computeDeterministicBaggageCount(selectedLayout.capacity, pct);
+  }, [baggagePercentInput, baggageError, selectedLayout.capacity]);
+
+  const baggageCountInput = String(computedBaggagePassengerCount);
 
   const currentScenarioKey = useMemo(() => {
-    return `${selectedLayout.id}|${passengerCountInput.trim()}|${baggageCountInput.trim()}|${seed}`;
-  }, [selectedLayout.id, passengerCountInput, baggageCountInput, seed]);
+    return `${selectedLayout.id}|${selectedLayout.capacity}|${baggagePercentInput.trim()}|${seed}`;
+  }, [selectedLayout.id, selectedLayout.capacity, baggagePercentInput, seed]);
 
-  // Menandai apabila input pada Menu 1 telah diubah setelah evaluasi terakhir dijalankan
+  // Menandai apabila pilihan pesawat atau persentase bagasi pada Menu 1 diubah setelah evaluasi terakhir
   const isScenarioDirty =
     azboSummary !== null && lastEvaluatedScenarioKey !== currentScenarioKey;
 
@@ -134,73 +121,57 @@ export default function App() {
   };
 
   const handleSelectLayout = (newLayout: AircraftLayoutConfig) => {
-    // Pertahankan input pengguna dan validasi ulang terhadap kapasitas layout baru
     setSelectedLayout(newLayout);
   };
 
-  const handleRunSimulationAndAzbo = useCallback((): {
+  const handleRunSimulationAndAzbo = useCallback(async (): Promise<{
     ok: boolean;
     error?: string;
-  } => {
-    if (passengerError || baggageError) {
+  }> => {
+    if (baggageError) {
       return {
         ok: false,
-        error:
-          passengerError ||
-          baggageError ||
-          "Input skenario belum valid untuk dievaluasi.",
+        error: baggageError,
       };
     }
 
-    const paxCount = Number(passengerCountInput.trim());
-    const bagCount = Number(baggageCountInput.trim());
-
-    if (
-      !Number.isInteger(paxCount) ||
-      paxCount <= 0 ||
-      paxCount > selectedLayout.capacity
-    ) {
+    const bagPct = Number(baggagePercentInput.trim());
+    if (!Number.isFinite(bagPct) || bagPct < 0 || bagPct > 100) {
       return {
         ok: false,
-        error: `Jumlah penumpang harus berada pada rentang 1 hingga ${selectedLayout.capacity} orang.`,
+        error: "Persentase penumpang membawa bagasi harus berada pada rentang 0% hingga 100%.",
       };
     }
 
-    if (!Number.isInteger(bagCount) || bagCount < 0 || bagCount > paxCount) {
-      return {
-        ok: false,
-        error: `Jumlah penumpang membawa bagasi kabin harus berada pada rentang 0 hingga ${paxCount} orang.`,
-      };
-    }
+    setIsEvaluating(true);
+    setEvaluationProgressMessage("Menghubungi server simulasi...");
+    setEvaluationProgressPercent(5);
 
     try {
-      const summary = runAzboOptimizationForScenario({
+      const summary = await runAzboV2EvaluationViaBackend({
         layout: selectedLayout,
-        passengerCount: paxCount,
-        baggagePassengerCount: bagCount,
+        baggagePercent: bagPct,
         seed,
+        onProgress: (msg, pct) => {
+          setEvaluationProgressMessage(msg);
+          setEvaluationProgressPercent(pct);
+        },
       });
       setAzboSummary(summary);
       setLastEvaluatedScenarioKey(currentScenarioKey);
+      setIsEvaluating(false);
       return { ok: true };
     } catch (err) {
+      setIsEvaluating(false);
       return {
         ok: false,
         error:
           err instanceof Error
             ? err.message
-            : "Gagal menjalankan evaluasi optimasi AZBO.",
+            : "Gagal menjalankan simulasi boarding pada server.",
       };
     }
-  }, [
-    passengerError,
-    baggageError,
-    passengerCountInput,
-    baggageCountInput,
-    selectedLayout,
-    seed,
-    currentScenarioKey,
-  ]);
+  }, [baggageError, baggagePercentInput, selectedLayout, seed, currentScenarioKey]);
 
   // Tampilkan Halaman Login / Akses Demo terlebih dahulu jika belum masuk sesi demo
   if (!demoSession) {
@@ -209,7 +180,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F4F7FB] text-slate-800 flex flex-col font-sans selection:bg-[#97D7FF] selection:text-slate-900">
-      {/* Navigasi Kapsul Horizontal di Bagian Atas (Tanpa Header Lama) */}
+      {/* Navigasi Kapsul Horizontal di Bagian Atas */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={(tab) => {
@@ -232,9 +203,9 @@ export default function App() {
             selectedLayout={selectedLayout}
             onSelectLayout={handleSelectLayout}
             passengerCountInput={passengerCountInput}
-            onChangePassengerCountInput={setPassengerCountInput}
-            baggageCountInput={baggageCountInput}
-            onChangeBaggageCountInput={setBaggageCountInput}
+            baggagePercentInput={baggagePercentInput}
+            onChangeBaggagePercentInput={setBaggagePercentInput}
+            computedBaggageCount={computedBaggagePassengerCount}
             passengerError={passengerError}
             baggageError={baggageError}
             onProceedToSimulation={() => {
@@ -248,9 +219,13 @@ export default function App() {
           <SimulationView
             selectedLayout={selectedLayout}
             passengerCountInput={passengerCountInput}
-            baggageCountInput={baggageCountInput}
+            baggagePercentInput={baggagePercentInput}
+            computedBaggageCount={computedBaggagePassengerCount}
             passengerError={passengerError}
             baggageError={baggageError}
+            isEvaluating={isEvaluating}
+            evaluationProgressMessage={evaluationProgressMessage}
+            evaluationProgressPercent={evaluationProgressPercent}
             onRunSimulationAndAzbo={handleRunSimulationAndAzbo}
             onNavigateToResults={() => {
               setActiveTab("results");
@@ -267,11 +242,15 @@ export default function App() {
           <AzboResultsView
             selectedLayout={selectedLayout}
             passengerCountInput={passengerCountInput}
-            baggageCountInput={baggageCountInput}
+            baggagePercentInput={baggagePercentInput}
+            computedBaggageCount={computedBaggagePassengerCount}
             passengerError={passengerError}
             baggageError={baggageError}
             azboSummary={azboSummary}
             isScenarioDirty={isScenarioDirty}
+            isEvaluating={isEvaluating}
+            evaluationProgressMessage={evaluationProgressMessage}
+            evaluationProgressPercent={evaluationProgressPercent}
             onRunAzboEvaluation={handleRunSimulationAndAzbo}
             onGoToAircraftLayout={() => {
               setActiveTab("aircraft");
@@ -289,3 +268,4 @@ export default function App() {
     </div>
   );
 }
+

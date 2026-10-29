@@ -4,6 +4,8 @@
  * Memastikan independensi logika, determinisme dengan PRNG seed, dan dukungan animasi UI kabin.
  */
 
+import { buildAzboV2EndpointUrl, isJsonContentType } from "../services/apiClient";
+
 export interface SeatInfo {
   seat_id: string;
   row: number;
@@ -176,12 +178,20 @@ export interface AisleTransitSegment {
   is_target_row: boolean;
 }
 
+export interface AisleCellInterval {
+  cell: number;
+  row: number;
+  enter_s: number;
+  leave_s: number;
+}
+
 export interface PassengerTimelineDetail {
   queue_position: number;
   seat_id: string;
   row: number;
   seat: string;
   has_bag: boolean;
+  speed_m_s?: number;
   entry_time_s: number;
   arrival_target_s: number;
   aisle_wait_s: number;
@@ -190,6 +200,7 @@ export interface PassengerTimelineDetail {
   bag_stowage_s: number;
   finish_time_s: number;
   aisle_transit: AisleTransitSegment[];
+  cell_intervals?: AisleCellInterval[];
 }
 
 export interface SimulationMetrics {
@@ -897,55 +908,16 @@ export interface BoardingMethodSpec {
 
 export const BOARDING_METHOD_CATALOG: BoardingMethodSpec[] = [
   {
-    id: "Back-to-Front-WILMA",
-    name: "Back-to-Front-WILMA",
-    shortLabel: "Back-to-Front + WILMA",
-    category: "Kombinasi Baris & Kursi Luar",
-    sourceCitation: "SRC01; SRC09; Notebook Eksperimen ZoneFlow",
-    sequenceRule:
-      "Penumpang dipanggil dari baris paling belakang ke depan; di setiap baris diurutkan Jendela → Tengah → Lorong.",
-    requiredParameters: "Jumlah baris kabin (nRows), prioritas kelas kursi (Window/Middle/Aisle).",
-    limitations:
-      "Identik dengan Back-to-Front-AZBO-WILMA apabila zona kontigu dipanggil dari belakang ke depan.",
-    supportedInSimulator: true,
-  },
-  {
     id: "GA-Zone-WMA",
     name: "GA-Zone-WMA",
-    shortLabel: "GA-Zone-WMA (Optimasi Zona)",
-    category: "Optimasi Pembagian Zona (K=3)",
-    sourceCitation: "SRC12 (Soolaki et al., 2012); Eksperimen ZoneFlow",
+    shortLabel: "Boarding Berbasis Zona (Hasil Optimasi AZBO)",
+    category: "Berbasis Zona (Optimasi GA)",
+    sourceCitation: "SRC12 (Soolaki et al., 2012); Blueprint AZBO V2",
     sequenceRule:
-      "Kabin dibagi menjadi 3 zona dengan batas baris hasil optimasi; di dalam tiap zona diterapkan urutan Jendela → Tengah → Lorong dari belakang ke depan.",
-    requiredParameters: "Batas baris 3 zona [b1, b2], urutan pemanggilan zona (misal 3 → 2 → 1).",
+      "Kabin dibagi menjadi K zona dengan batas baris dan urutan pemanggilan hasil optimasi Genetic Algorithm; di dalam tiap zona diterapkan aturan WMA atau BTF.",
+    requiredParameters: "Batas baris zona, urutan pemanggilan zona, dan aturan internal zona.",
     limitations:
-      "Konfigurasi tersimpan [5, 18] dioptimalkan pada kabin 30 baris; untuk kabin jumlah baris berbeda, kerangka AZBO menghitung batas zona proporsional dan menguji partisi terbaik.",
-    supportedInSimulator: true,
-  },
-  {
-    id: "Exhaustive-Zone-WMA",
-    name: "Exhaustive-Zone-WMA",
-    shortLabel: "Exhaustive-Zone-WMA (Audit Zona)",
-    category: "Audit Pencarian Menyeluruh (K=3)",
-    sourceCitation: "SRC12; Audit Enumerasi Eksak ZoneFlow",
-    sequenceRule:
-      "Mengevaluasi kombinasi batas 3 zona dan 6 urutan pemanggilan zona dengan aturan WMA di dalam masing-masing zona.",
-    requiredParameters: "Rentang baris minimum/maksimum per zona, 6 permutasi urutan zona.",
-    limitations:
-      "Pada skenario baru di browser, kerangka AZBO mengevaluasi kandidat partisi 3 zona secara langsung untuk skenario aktif.",
-    supportedInSimulator: true,
-  },
-  {
-    id: "Fixed-Zone-WMA",
-    name: "Fixed-Zone-WMA",
-    shortLabel: "Fixed-Zone-WMA (3 Zona Seimbang)",
-    category: "Pembagian Zona Tetap",
-    sourceCitation: "SRC01; SRC11",
-    sequenceRule:
-      "Kabin dibagi menjadi 3 zona berukuran seimbang dan dipanggil dari Zona 3 (belakang) → Zona 2 (tengah) → Zona 1 (depan) dengan aturan WMA di dalam zona.",
-    requiredParameters: "Jumlah zona K = 3, jumlah baris kabin.",
-    limitations:
-      "Menjadi pembanding dasar untuk menguji apakah batas zona tidak seragam memberikan pengurangan waktu boarding.",
+      "Menggunakan pencarian heuristik Genetic Algorithm variabel-K pada replikasi pelatihan.",
     supportedInSimulator: true,
   },
   {
@@ -1041,28 +1013,69 @@ export const BOARDING_METHOD_CATALOG: BoardingMethodSpec[] = [
   {
     id: "Front-to-Back",
     name: "Front-to-Back",
-    shortLabel: "Front-to-Back (Depan ke Belakang)",
-    category: "Urutan Baris Depan ke Belakang",
-    sourceCitation: "Baseline Eksperimen ZoneFlow",
+    shortLabel: "Depan ke Belakang (Front-to-Back)",
+    category: "Berdasarkan Baris (Depan ke Belakang)",
+    sourceCitation: "Płanda & Skorupski (2025), Aerospace 12, 403 — Bagian 2.2.3",
     sequenceRule:
-      "Penumpang baris paling depan masuk lebih dahulu diikuti baris di belakangnya.",
+      "Penumpang baris paling depan (Baris 1) masuk lebih dahulu secara berurutan menuju baris paling belakang (Baris N).",
     requiredParameters: "Nomor baris kursi dan angka awal pengacakan (seed).",
     limitations:
       "Menimbulkan penumpukan antrean lorong paling tinggi karena penumpang baris depan menghalangi akses ke seluruh baris belakang.",
     supportedInSimulator: true,
   },
   {
-    id: "Double-Outside-In-BWB",
-    name: "Double Outside-in (BWB Multi-Aisle)",
-    shortLabel: "Double Outside-in (BWB)",
+    id: "BLOCKS_4_ROWS",
+    name: "Four-Row Blocks (Blok 4 Baris)",
+    shortLabel: "Blok 4 Baris (Four-Row Blocks)",
+    category: "Blok Baris Tetap Bergantian",
+    sourceCitation: "Steffen & Hotchkiss (2012), J. Air Transp. Manag. 18(1), 64–67",
+    sequenceRule:
+      "Kabin dibagi menjadi blok-blok tetap berukuran maksimal 4 baris dari depan ke belakang; pemanggilan dimulai dari blok paling belakang, lalu paling depan, kemudian bergantian menuju tengah dengan urutan acak di dalam blok.",
+    requiredParameters: "Ukuran blok 4 baris, jumlah baris kabin (nRows), dan angka awal pengacakan (seed).",
+    limitations:
+      "Merupakan adaptasi eksperimen blok 4 baris Steffen & Hotchkiss (2012) pada kabin 12 baris untuk jumlah baris kabin umum N.",
+    supportedInSimulator: true,
+  },
+  {
+    id: "DOUBLE_OUTSIDE_IN",
+    name: "Double Outside-In (Adaptasi Kabin Satu Lorong)",
+    shortLabel: "Double Outside-In (Adaptasi Kabin Satu Lorong)",
+    category: "Hibrida Dua Bagian Kabin & Posisi Kursi",
+    sourceCitation: "Adaptasi Dong, Jia, Yanagisawa, & Nishinari (2025), Physica A 658, 130298 — Bagian 3.2, Gambar 5",
+    sequenceRule:
+      "Kabin dibagi menjadi bagian depan dan bagian belakang; setiap kelas kursi (Jendela → Tengah → Lorong) dipanggil untuk bagian belakang terlebih dahulu kemudian bagian depan.",
+    requiredParameters: "Pembagian tengah baris kabin (floor(N/2)), prioritas kelas kursi, dan angka awal pengacakan (seed).",
+    limitations:
+      "Adaptasi Double Outside-In dari studi Dong et al. (2025) untuk model pesawat komersial lorong tunggal; pada pesawat 2-2 tanpa kursi tengah otomatis menghasilkan 4 kelompok.",
+    supportedInSimulator: true,
+  },
+  {
+    id: "BTF_WMA_FIXED",
+    name: "Back-to-Front + WMA (3 Zona Tetap)",
+    shortLabel: "Back-to-Front + WMA (3 Zona Tetap)",
+    category: "Hibrida Zona Tetap & Posisi Kursi",
+    sourceCitation: "Possamai Viertel et al. (2025); Baseline Hibrida 3 Zona Tetap ZoneFlow",
+    sequenceRule:
+      "Kabin dibagi menjadi 3 zona tetap seimbang yang dipanggil dari Zona Belakang → Zona Tengah → Zona Depan; di dalam setiap zona penumpang dipanggil Jendela → Tengah → Lorong.",
+    requiredParameters: "Pembagian 3 zona baris seimbang dan prioritas kelas kursi (Window/Middle/Aisle).",
+    limitations:
+      "Menggunakan 3 zona tetap tanpa optimasi GA sebagai pembanding langsung terhadap metode Boarding Berbasis Zona (AZBO variabel-K).",
+    supportedInSimulator: true,
+  },
+  {
+    id: "N-Steffen-BWB",
+    name: "N-Aisles Steffen (N-Steffen BWB Multi-Aisle)",
+    shortLabel: "N-Aisles Steffen / N-Steffen (BWB Multi-Lorong)",
     category: "Khusus Pesawat Multi-Lorong (BWB)",
-    sourceCitation: "SRC02 (Dong et al., 2025)",
-    sequenceRule: "Strategi masuk simultan melalui dua lorong kabin Blended Wing Body.",
-    requiredParameters: "Geometri kabin multi-lorong BWB dan distribusi kursi tengah multi-kolom.",
-    limitations: "Tidak berlaku pada pesawat lorong tunggal.",
+    sourceCitation: "Dong, Jia, Yanagisawa, & Nishinari (2025), Physica A 658, 130298 — Bagian 4, Gambar 7–9",
+    sequenceRule:
+      "Membagi penumpang ke beberapa sub-kabin (4 bay / 4 lorong paralel pada pesawat Blended Wing Body) dengan pemisahan lorong ganjil/genap serta koridor depan.",
+    requiredParameters: "Geometri kabin multi-bay dan multi-lorong Blended Wing Body (N_aisles >= 2).",
+    limitations:
+      "Pada pesawat lorong tunggal (N_aisles = 1), penulis jurnal menyatakan secara eksplisit (Bagian 4.2 hal. 7 & Bagian 6 hal. 10) bahwa N-Steffen tereduksi menjadi metode Steffen klasik yang sudah tersedia pada simulator ini.",
     supportedInSimulator: false,
     unsupportedReason:
-      "Belum didukung: Memerlukan model kabin multi-lorong Blended Wing Body (SRC02), sedangkan simulator ZoneFlow menggunakan model lorong tunggal.",
+      "Tidak diaktifkan sebagai metode terpisah karena dirancang khusus untuk kabin multi-lorong Blended Wing Body (Dong et al., 2025), sedangkan pada pesawat lorong tunggal aturannya tereduksi menjadi Metode Steffen klasik.",
   },
   {
     id: "Decreasing-Baggage-Priority",
@@ -1075,7 +1088,7 @@ export const BOARDING_METHOD_CATALOG: BoardingMethodSpec[] = [
     limitations: "Model saat ini menggunakan variabel biner (membawa / tidak membawa bagasi kabin).",
     supportedInSimulator: false,
     unsupportedReason:
-      "Belum didukung: Memerlukan input jumlah tas bertingkat per penumpang (0–3 item), sedangkan model v3 memodelkan proporsi penumpang pembawa bagasi kabin (0 atau 1 bagasi).",
+      "Belum didukung: Memerlukan input jumlah tas bertingkat per penumpang (0–3 item), sedangkan model AZBO V2 memodelkan proporsi penumpang pembawa bagasi kabin (0 atau 1 bagasi).",
   },
 ];
 
@@ -1122,6 +1135,47 @@ export function buildBoardingOrderForScenario(
       return rotatingZonesOrder(passengers, 6, nRows);
     case "Front-to-Back":
       return frontToBackOrder(passengers, seed);
+    case "BLOCKS_4_ROWS": {
+      const tie = createTieBreaker(passengers, seed);
+      const numBlocks = Math.max(1, Math.ceil(nRows / 4));
+      const seq: number[] = [];
+      let left = 1;
+      let right = numBlocks;
+      let takeRear = true;
+      while (left <= right) {
+        if (takeRear) {
+          seq.push(right);
+          right -= 1;
+        } else {
+          seq.push(left);
+          left += 1;
+        }
+        takeRear = !takeRear;
+      }
+      const rankMap: Record<number, number> = {};
+      seq.forEach((bId, i) => {
+        rankMap[bId] = i;
+      });
+      return [...passengers].sort((a, b) => {
+        const bA = Math.min(numBlocks, Math.floor((a.row - 1) / 4) + 1);
+        const bB = Math.min(numBlocks, Math.floor((b.row - 1) / 4) + 1);
+        if (rankMap[bA] !== rankMap[bB]) return rankMap[bA] - rankMap[bB];
+        return (tie[a.seat_id] || 0) - (tie[b.seat_id] || 0);
+      });
+    }
+    case "DOUBLE_OUTSIDE_IN": {
+      const tie = createTieBreaker(passengers, seed);
+      const frontEnd = Math.floor(nRows / 2);
+      return [...passengers].sort((a, b) => {
+        if (a.seat_priority !== b.seat_priority) return a.seat_priority - b.seat_priority;
+        const secA = a.row <= frontEnd ? 1 : 0;
+        const secB = b.row <= frontEnd ? 1 : 0;
+        if (secA !== secB) return secA - secB;
+        return (tie[a.seat_id] || 0) - (tie[b.seat_id] || 0);
+      });
+    }
+    case "BTF_WMA_FIXED":
+      return fixedZoneWmaOrder(passengers, nRows);
     case "Back-to-Front-AZBO-WILMA":
       return backToFrontAzboWilmaOrder(passengers, nRows);
     default:
@@ -1136,10 +1190,21 @@ export interface EvaluatedMethodResult {
   category: string;
   metrics: SimulationMetrics;
   zoneConfigUsed?: {
+    kZones?: number;
     boundaries: number[];
     sizes: number[];
     order: number[];
+    zoneRanges?: Array<[number, number]>;
+    inZoneRule?: string;
   };
+  callingSteps?: string[];
+  sdSeconds?: number;
+  sdMinutes?: number;
+  ci95Seconds?: [number, number];
+  minSeconds?: number;
+  maxSeconds?: number;
+  pairedDiffSdSeconds?: number;
+  pairedDiffCi95Seconds?: [number, number];
   differenceFromBestSeconds: number;
   differenceFromBestPercent: number;
 }
@@ -1149,21 +1214,37 @@ export interface AzboOptimizationSummary {
     layout: AircraftLayoutConfig;
     passengerCount: number;
     baggagePassengerCount: number;
+    baggagePercent?: number;
     seed: number;
+    trainReplications?: number;
+    testReplications?: number;
+    dtSeconds?: number;
+    rowPitchM?: number;
+    cellLengthM?: number;
   };
   recommendedMethod: EvaluatedMethodResult;
   evaluatedMethods: EvaluatedMethodResult[];
   zoneOptimizationAudit: {
     kZones: number;
+    exploredKValues?: number[];
+    initialKCoverage?: number[];
+    initialCoverageCandidatesEvaluated?: number;
+    initialCoverageFitnessByKS?: Record<string, number>;
+    gaPopulationRequested?: number;
+    trainSeeds?: number[];
+    testSeeds?: number[];
+    inZoneRule?: string;
     totalZoneCandidatesEvaluated: number;
     bestZoneConfig: {
       boundaries: number[];
       sizes: number[];
       order: number[];
+      zoneRanges?: Array<[number, number]>;
+      inZoneRule?: string;
       boardingTimeSeconds: number;
       boardingTimeMinutes: number;
     };
-    fixedZoneBaseline: {
+    fixedZoneBaseline?: {
       boundaries: number[];
       sizes: number[];
       order: number[];
@@ -1173,11 +1254,458 @@ export interface AzboOptimizationSummary {
     azboWilmaEquivalenceVerified: boolean;
   };
   selectionRationale: string;
+  closeCompetitionNote?: string;
+  disclaimer?: string;
+  equivalentMethods?: Array<[string, string]>;
+  animationDetails?: PassengerTimelineDetail[];
+  animationMetrics?: SimulationMetrics;
+  animationTrace?: Array<Record<string, unknown>>;
+  animationReplication?: {
+    replicationSeed: number;
+    replicationIndex?: number;
+    selectionMethod?: string;
+    sampleMeanS?: number;
+    isSingleReplication?: boolean;
+    boardingTimeS: number;
+  };
   scientificCaveats: string[];
   azboImplementationNotes: {
     implementedInCode: string[];
     missingFormalSpecInSource: string[];
   };
+}
+
+/**
+ * Menghitung jumlah penumpang pembawa bagasi secara deterministik sesuai Blueprint AZBO Bagian 3.1:
+ * n_b = floor(n * (baggagePercent / 100) + 0.5)
+ */
+export function computeDeterministicBaggageCount(
+  capacity: number,
+  baggagePercent: number
+): number {
+  if (!Number.isFinite(capacity) || capacity <= 0) return 0;
+  if (!Number.isFinite(baggagePercent) || baggagePercent < 0 || baggagePercent > 100) {
+    return 0;
+  }
+  const rho = baggagePercent / 100.0;
+  return Math.floor(capacity * rho + 0.5);
+}
+
+/**
+ * Memetakan respons JSON dari backend Python AZBO V2 (/api/v2/azbo/optimize atau /api/v2/azbo/jobs)
+ * ke struktur AzboOptimizationSummary yang digunakan oleh tampilan Hasil.
+ */
+export function mapAzboV2ResponseToSummary(
+  apiData: any,
+  layout: AircraftLayoutConfig
+): AzboOptimizationSummary {
+  if (!apiData || !apiData.recommendation || !apiData.scenario || !apiData.optimization) {
+    throw new Error("Format respons dari server simulasi tidak lengkap.");
+  }
+
+  const scen = apiData.scenario;
+  const opt = apiData.optimization;
+  const rec = apiData.recommendation;
+  const anim = apiData.animation;
+
+  const paxCount: number = Number(scen.passenger_count ?? layout.capacity);
+  const bagCount: number = Number(scen.baggage_passenger_count ?? 0);
+  const bagPct: number = Number(
+    scen.baggage_percent ?? Math.round((bagCount / Math.max(1, paxCount)) * 100)
+  );
+  const seedVal: number = Number(scen.seed ?? BASE_SEED);
+
+  const evaluatedStrategies: any[] = Array.isArray(rec.evaluated_strategies)
+    ? rec.evaluated_strategies
+    : [];
+
+  if (evaluatedStrategies.length === 0) {
+    throw new Error("Server simulasi tidak mengembalikan daftar metode yang dievaluasi.");
+  }
+
+  const evaluatedMethods: EvaluatedMethodResult[] = evaluatedStrategies.map(
+    (item: any, idx: number) => {
+      const meanS = Number(item.mean_s ?? 0);
+      const meanMin = Number(item.mean_min ?? meanS / 60);
+      const sdS = Number(item.sd_s ?? 0);
+      const sdMin = Number(item.sd_min ?? sdS / 60);
+      const ciLow = Number(item.ci95_low_s ?? meanS);
+      const ciHigh = Number(item.ci95_high_s ?? meanS);
+      const aisleEvents = Number(item.mean_aisle_interference_events ?? 0);
+      const seatEvents = Number(item.mean_seat_interference_events ?? 0);
+
+      let zoneConfigUsed: EvaluatedMethodResult["zoneConfigUsed"] | undefined;
+      if (item.zone_config) {
+        zoneConfigUsed = {
+          kZones: Number(item.zone_config.k_zones ?? opt.k_zones ?? 1),
+          boundaries: Array.isArray(item.zone_config.boundaries)
+            ? item.zone_config.boundaries.map(Number)
+            : [],
+          sizes: Array.isArray(item.zone_config.sizes)
+            ? item.zone_config.sizes.map(Number)
+            : [],
+          order: Array.isArray(item.zone_config.order)
+            ? item.zone_config.order.map(Number)
+            : [],
+          zoneRanges: Array.isArray(item.zone_config.zone_ranges)
+            ? item.zone_config.zone_ranges.map((r: any) => [Number(r[0]), Number(r[1])] as [number, number])
+            : undefined,
+          inZoneRule: item.zone_config.in_zone_rule,
+        };
+      }
+
+      return {
+        rank: Number(item.rank ?? idx + 1),
+        methodName: String(item.strategy_id),
+        shortLabel: String(item.short_label || item.strategy_id),
+        category: String(item.category || "Metode Boarding"),
+        metrics: {
+          boarding_time_seconds: meanS,
+          boarding_time_minutes: meanMin,
+          aisle_interference_events: aisleEvents,
+          aggregate_aisle_wait_person_seconds: 0,
+          aisle_wait_seconds: 0,
+          seat_interference_events: seatEvents,
+          occupied_blocker_count: seatEvents,
+          baggage_count: bagCount,
+          passenger_count: paxCount,
+        },
+        zoneConfigUsed,
+        callingSteps: Array.isArray(item.calling_steps)
+          ? item.calling_steps.map(String)
+          : [],
+        sdSeconds: sdS,
+        sdMinutes: sdMin,
+        ci95Seconds: [ciLow, ciHigh],
+        minSeconds: Number(item.min_s ?? meanS),
+        maxSeconds: Number(item.max_s ?? meanS),
+        pairedDiffSdSeconds: Number(item.paired_diff_sd_s ?? 0),
+        pairedDiffCi95Seconds: Array.isArray(item.paired_diff_ci95_s)
+          ? [Number(item.paired_diff_ci95_s[0]), Number(item.paired_diff_ci95_s[1])]
+          : [0, 0],
+        differenceFromBestSeconds: Number(item.diff_from_best_s ?? 0),
+        differenceFromBestPercent: Number(item.diff_from_best_pct ?? 0),
+      };
+    }
+  );
+
+  const recommended = evaluatedMethods[0];
+  const kZonesOpt = Number(opt.k_zones ?? 1);
+  const optBoundaries: number[] = Array.isArray(opt.cut_rows)
+    ? opt.cut_rows.map(Number)
+    : [];
+  const optSizes: number[] = Array.isArray(opt.zone_sizes)
+    ? opt.zone_sizes.map(Number)
+    : [layout.nRows];
+  const optOrder: number[] = Array.isArray(opt.zone_order)
+    ? opt.zone_order.map(Number)
+    : [1];
+  const optRanges: Array<[number, number]> = Array.isArray(opt.zone_ranges)
+    ? opt.zone_ranges.map((r: any) => [Number(r[0]), Number(r[1])] as [number, number])
+    : [[1, layout.nRows]];
+  const optRule = String(opt.in_zone_rule ?? "WMA_IN_ZONE");
+
+  const zoneMethodEntry =
+    evaluatedMethods.find((m) => m.methodName === "ZONE") ?? recommended;
+
+  const equivalentPairs: Array<[string, string]> = Array.isArray(rec.equivalent_methods)
+    ? rec.equivalent_methods.map((p: any) => [String(p[0]), String(p[1])] as [string, string])
+    : [];
+
+  const testReps = Number(scen.test_reps ?? 20);
+  const trainReps = Number(scen.train_reps ?? 3);
+
+  const selectionRationale =
+    `Berdasarkan evaluasi ${testReps} simulasi berulang pada ${layout.name} (${paxCount} penumpang — 100% kursi terisi, ` +
+    `${bagCount} orang atau ${bagPct}% membawa bagasi kabin), metode "${recommended.shortLabel}" menghasilkan ` +
+    `rata-rata perkiraan waktu boarding tercepat yaitu ${recommended.metrics.boarding_time_seconds.toFixed(1)} detik ` +
+    `(${recommended.metrics.boarding_time_minutes.toFixed(2)} menit, simpangan baku ±${(recommended.sdSeconds ?? 0).toFixed(1)} detik) ` +
+    `dari ${evaluatedMethods.length} metode boarding yang diuji.`;
+
+  const closeCompetitionNote: string | undefined =
+    typeof rec.close_competition_note === "string" && rec.close_competition_note.trim().length > 0
+      ? rec.close_competition_note.trim()
+      : undefined;
+
+  const animationDetails: PassengerTimelineDetail[] = Array.isArray(anim?.timeline_details)
+    ? anim.timeline_details
+    : [];
+
+  const animationMetrics: SimulationMetrics | undefined = anim?.metrics
+    ? {
+        boarding_time_seconds: Number(anim.metrics.boarding_time_seconds ?? recommended.metrics.boarding_time_seconds),
+        boarding_time_minutes: Number(anim.metrics.boarding_time_minutes ?? recommended.metrics.boarding_time_minutes),
+        aisle_interference_events: Number(anim.metrics.aisle_interference_events ?? recommended.metrics.aisle_interference_events),
+        aggregate_aisle_wait_person_seconds: Number(anim.metrics.aggregate_aisle_wait_person_seconds ?? 0),
+        aisle_wait_seconds: Number(anim.metrics.aisle_wait_seconds ?? 0),
+        seat_interference_events: Number(anim.metrics.seat_interference_events ?? recommended.metrics.seat_interference_events),
+        occupied_blocker_count: Number(anim.metrics.occupied_blocker_count ?? 0),
+        baggage_count: Number(anim.metrics.baggage_count ?? bagCount),
+        passenger_count: Number(anim.metrics.passenger_count ?? paxCount),
+      }
+    : undefined;
+
+  const animationReplication = anim
+    ? {
+        replicationSeed: Number(anim.replication_seed ?? seedVal),
+        replicationIndex:
+          typeof anim.replication_index === "number" ? Number(anim.replication_index) : undefined,
+        selectionMethod:
+          typeof anim.selection_method === "string" ? anim.selection_method : undefined,
+        sampleMeanS:
+          typeof anim.sample_mean_s === "number"
+            ? Number(anim.sample_mean_s)
+            : recommended.metrics.boarding_time_seconds,
+        isSingleReplication: Boolean(anim.is_single_replication ?? true),
+        boardingTimeS: Number(
+          anim.boarding_time_s ??
+            anim.metrics?.boarding_time_seconds ??
+            recommended.metrics.boarding_time_seconds
+        ),
+      }
+    : undefined;
+
+  return {
+    scenario: {
+      layout,
+      passengerCount: paxCount,
+      baggagePassengerCount: bagCount,
+      baggagePercent: bagPct,
+      seed: seedVal,
+      trainReplications: trainReps,
+      testReplications: testReps,
+      dtSeconds: Number(scen.dt_s ?? 0.25),
+      rowPitchM: Number(scen.row_pitch_m ?? 0.8),
+      cellLengthM: Number(scen.cell_m ?? 0.4),
+    },
+    recommendedMethod: recommended,
+    evaluatedMethods,
+    zoneOptimizationAudit: {
+      kZones: kZonesOpt,
+      exploredKValues: Array.isArray(opt.explored_k_values)
+        ? opt.explored_k_values.map(Number)
+        : [kZonesOpt],
+      initialKCoverage: Array.isArray(opt.initial_k_coverage)
+        ? opt.initial_k_coverage.map(Number)
+        : undefined,
+      initialCoverageCandidatesEvaluated:
+        typeof opt.initial_coverage_candidates_evaluated === "number"
+          ? Number(opt.initial_coverage_candidates_evaluated)
+          : undefined,
+      initialCoverageFitnessByKS:
+        opt.initial_coverage_fitness_by_k_s &&
+        typeof opt.initial_coverage_fitness_by_k_s === "object"
+          ? (opt.initial_coverage_fitness_by_k_s as Record<string, number>)
+          : undefined,
+      gaPopulationRequested:
+        typeof opt.ga_population_requested === "number"
+          ? Number(opt.ga_population_requested)
+          : undefined,
+      trainSeeds: Array.isArray(opt.train_seeds) ? opt.train_seeds.map(Number) : undefined,
+      testSeeds: Array.isArray(opt.test_seeds) ? opt.test_seeds.map(Number) : undefined,
+      inZoneRule: optRule,
+      totalZoneCandidatesEvaluated: Number(opt.unique_candidates_evaluated ?? 0),
+      bestZoneConfig: {
+        boundaries: optBoundaries,
+        sizes: optSizes,
+        order: optOrder,
+        zoneRanges: optRanges,
+        inZoneRule: optRule,
+        boardingTimeSeconds: zoneMethodEntry.metrics.boarding_time_seconds,
+        boardingTimeMinutes: zoneMethodEntry.metrics.boarding_time_minutes,
+      },
+      fixedZoneBaseline: undefined,
+      azboWilmaEquivalenceVerified: equivalentPairs.some(
+        ([a, b]) => (a === "ZONE" && b === "WMA") || (a === "WMA" && b === "ZONE")
+      ),
+    },
+    selectionRationale,
+    closeCompetitionNote,
+    disclaimer:
+      rec.disclaimer ||
+      "Hasil merupakan perkiraan berdasarkan model simulasi dan belum menggantikan pengujian operasional di lapangan.",
+    equivalentMethods: equivalentPairs,
+    animationDetails,
+    animationMetrics,
+    animationTrace: Array.isArray(anim?.trace) ? anim.trace : [],
+    animationReplication,
+    scientificCaveats: [
+      "Hasil merupakan perkiraan berdasarkan model simulasi dan belum menggantikan pengujian operasional di lapangan.",
+      `Evaluasi memisahkan ${trainReps} replikasi pencarian zona dan ${testReps} replikasi pengujian akhir dengan angka acak bersama (Common Random Numbers) agar perbandingan ${evaluatedMethods.length} metode berlangsung adil.`,
+      "Pencarian konfigurasi zona menggunakan algoritma heuristik (Genetic Algorithm) yang mencari konfigurasi terbaik yang ditemukan pada simulasi, bukan jaminan matematis optimum global.",
+      ...(testReps < 100 ? ["Jumlah replikasi evaluasi akhir kurang dari acuan audit 100 pada Blueprint; hasil saat ini bersifat eksploratif dan bukan bukti unggul secara statistik."] : []),
+      "Animasi menampilkan satu replikasi TEST nyata dengan durasi paling mendekati rata-rata metode terpilih, bukan animasi dari nilai rata-rata maupun hasil validasi lapangan.",
+      "Memilih pemenang berdasarkan rerata sampel TEST dapat menimbulkan bias seleksi; lihat selisih berpasangan dan ketidakpastian sebelum menarik kesimpulan kuat.",
+    ],
+    azboImplementationNotes: {
+      implementedInCode: [
+        `Model antrean lorong kapasitas ketat 1 penumpang per sel (${Number(scen.cell_m ?? 0.4)} m/sel, langkah waktu Δt = ${Number(scen.dt_s ?? 0.25)} dtk) tanpa mendahului penumpang di depannya.`,
+        `Jumlah zona boarding K sebagai variabel keputusan (K dieksplorasi dari 1 hingga ${layout.nRows} zona) beserta urutan pemanggilan zona dan aturan di dalam zona.`,
+        `Evaluasi berulang terpisah (${trainReps} replikasi pencarian zona + ${testReps} replikasi evaluasi akhir) pada ${evaluatedMethods.length} kelompok metode: Boarding Berbasis Zona (AZBO), Jendela–Tengah–Lorong (WMA / Outside-In), Belakang ke Depan (BTF), Acak (Random), Piramida Terbalik (Reverse Pyramid), Metode Steffen, Zona Berputar (Rotating Zones), Optimal Termodifikasi (Modified Optimal), Depan ke Belakang (Front-to-Back), Blok 4 Baris (Four-Row Blocks), Double Outside-In (Adaptasi Kabin Satu Lorong), dan Back-to-Front + WMA (3 Zona Tetap).`,
+      ],
+      missingFormalSpecInSource: [
+        "Metode N-Aisles Steffen (N-Steffen) dari Dong et al. (2025) dirancang khusus untuk pesawat multi-lorong Blended Wing Body dan tereduksi menjadi Metode Steffen klasik pada kabin satu lorong, sedangkan Double Outside-In diadaptasi ke kabin satu lorong dengan membagi setiap kelas kursi menjadi paruh belakang dan paruh depan.",
+      ],
+    },
+  };
+}
+
+/**
+ * Menjalankan evaluasi dan optimasi AZBO V2 melalui backend Python FastAPI.
+ * Tidak pernah menghasilkan angka simulasi buatan apabila backend tidak tersedia.
+ */
+export async function runAzboV2EvaluationViaBackend(options: {
+  layout: AircraftLayoutConfig;
+  baggagePercent: number;
+  seed?: number;
+  onProgress?: (message: string, percent: number) => void;
+}): Promise<AzboOptimizationSummary> {
+  const { layout, baggagePercent, seed = BASE_SEED, onProgress } = options;
+  if (!Number.isFinite(baggagePercent) || baggagePercent < 0 || baggagePercent > 100) {
+    throw new Error("Persentase penumpang membawa bagasi harus berada antara 0% hingga 100%.");
+  }
+
+  const payload = {
+    layout_id: layout.id,
+    layout_name: layout.name,
+    rows: layout.nRows,
+    left_seats: layout.leftSeats.length,
+    right_seats: layout.rightSeats.length,
+    left_letters: layout.leftSeats,
+    right_letters: layout.rightSeats,
+    row_pitch_m: 0.8,
+    cell_m: 0.4,
+    bag_ratio: baggagePercent / 100.0,
+    ga_population: 14,
+    ga_generations: 8,
+    train_reps: 3,
+    // Default cepat = eksploratif; atur VITE_AZBO_TEST_REPS=100 untuk audit penelitian.
+    // Maksimum backend 200; parameter diambil dan divalidasi saat build Vite.
+    test_reps: (() => {
+      const configured = Number(import.meta.env.VITE_AZBO_TEST_REPS ?? "20");
+      if (!Number.isInteger(configured) || configured < 2 || configured > 200) {
+        throw new Error("VITE_AZBO_TEST_REPS harus bilangan bulat antara 2 dan 200.");
+      }
+      return configured;
+    })(),
+    seed,
+    zone_call_overhead_s: 0.0,
+  };
+
+  onProgress?.("Menghubungi server simulasi AZBO V2...", 5);
+
+  const jobsEndpointUrl = buildAzboV2EndpointUrl("/jobs");
+  let startRes: Response;
+  try {
+    startRes = await fetch(jobsEndpointUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error(
+      "Server simulasi Python sedang tidak tersedia atau belum terhubung. Jika Anda membuka aplikasi pada layanan hosting statis (seperti GitHub Pages), pastikan layanan backend FastAPI aktif dan alamat HTTPS backend telah diatur pada VITE_API_BASE_URL."
+    );
+  }
+
+  if (!startRes.ok) {
+    let detail = "";
+    try {
+      if (isJsonContentType(startRes.headers.get("content-type"))) {
+        const errJson = await startRes.json();
+        detail = errJson?.detail ? String(errJson.detail) : "";
+      }
+    } catch {
+      // ignore
+    }
+    if (!detail && (startRes.status === 404 || startRes.status === 405)) {
+      throw new Error(
+        "Layanan backend simulasi Python belum terhubung pada alamat ini (HTTP " +
+          startRes.status +
+          "). Pastikan server FastAPI berjalan dan variabel lingkungan VITE_API_BASE_URL mengarah ke URL HTTPS backend."
+      );
+    }
+    throw new Error(
+      detail ||
+        `Server simulasi gagal memproses permintaan (kode status ${startRes.status}).`
+    );
+  }
+
+  if (!isJsonContentType(startRes.headers.get("content-type"))) {
+    throw new Error(
+      "Layanan backend simulasi Python belum terhubung (server mengembalikan halaman statis HTML, bukan respons JSON API). Untuk deployment produksi seperti GitHub Pages, atur VITE_API_BASE_URL ke URL HTTPS backend FastAPI."
+    );
+  }
+
+  const startData = await startRes.json();
+  const jobId = startData?.job_id;
+  if (!jobId) {
+    throw new Error("Server simulasi tidak mengembalikan ID pekerjaan yang valid.");
+  }
+
+  onProgress?.(
+    startData.progress_message || "Menjalankan pencarian zona & simulasi boarding...",
+    Number(startData.progress_percent ?? 10)
+  );
+
+  // Poll status pekerjaan hingga selesai
+  // Replikasi penelitian 100x pada 12 metode dapat memerlukan waktu >60 detik.
+  // Polling tidak boleh menyatakan simulasi gagal hanya karena batas lama 60 detik.
+  const maxPolls = 900; // sampai ~15 menit, tanpa memutus job Python yang masih berjalan
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    let pollRes: Response;
+    try {
+      pollRes = await fetch(
+        buildAzboV2EndpointUrl(`/jobs/${encodeURIComponent(jobId)}`),
+        {
+          headers: { Accept: "application/json" },
+        }
+      );
+    } catch {
+      throw new Error(
+        "Koneksi ke server simulasi Python terputus saat perhitungan sedang berjalan."
+      );
+    }
+
+    if (!pollRes.ok) {
+      throw new Error(
+        `Gagal memeriksa status simulasi dari server (kode ${pollRes.status}).`
+      );
+    }
+
+    if (!isJsonContentType(pollRes.headers.get("content-type"))) {
+      throw new Error(
+        "Respons status simulasi bukan format JSON dari server backend Python."
+      );
+    }
+
+    const pollData = await pollRes.json();
+    if (pollData.progress_message || typeof pollData.progress_percent === "number") {
+      onProgress?.(
+        String(pollData.progress_message || "Menjalankan simulasi boarding..."),
+        Number(pollData.progress_percent ?? 50)
+      );
+    }
+
+    if (pollData.status === "completed" && pollData.result) {
+      onProgress?.("Selesai menyusun rekomendasi boarding.", 100);
+      return mapAzboV2ResponseToSummary(pollData.result, layout);
+    }
+
+    if (pollData.status === "failed" || pollData.status === "cancelled") {
+      throw new Error(
+        pollData.error_message || "Perhitungan simulasi di server gagal atau dibatalkan."
+      );
+    }
+  }
+
+  throw new Error(
+    "Waktu tunggu perhitungan simulasi habis. Silakan coba jalankan simulasi kembali."
+  );
 }
 
 /**

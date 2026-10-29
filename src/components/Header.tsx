@@ -31,16 +31,16 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const titles: Record<NavTab, { title: string; desc: string }> = {
     aircraft: {
-      title: "Menu 1 — Pemilihan Layout Pesawat",
-      desc: "Pilih jenis pesawat, periksa diagram denah kabin dari atas, serta tentukan jumlah penumpang dan penumpang pembawa bagasi kabin.",
+      title: "Menu 1 — Pilih Pesawat & Kondisi Penumpang",
+      desc: "Pilih jenis pesawat dan persentase penumpang yang membawa bagasi kabin.",
     },
     simulation: {
-      title: "Menu 2 — Verifikasi Skenario & Evaluasi AZBO",
-      desc: "Verifikasi ringkasan skenario dan parameter model sebelum menjalankan evaluasi komparatif serta optimasi zona AZBO.",
+      title: "Menu 2 — Simulasi Boarding",
+      desc: "Periksa ringkasan kondisi penerbangan dan jalankan simulasi untuk mencari urutan boarding terbaik.",
     },
     results: {
-      title: "Menu 3 — Hasil Optimasi AZBO & Simulasi Metode Terbaik",
-      desc: "Rekomendasi metode boarding tercepat, tabel peringkat seluruh metode, dan simulasi animasi gerakan penumpang metode terbaik.",
+      title: "Menu 3 — Hasil Rekomendasi & Animasi Boarding",
+      desc: "Metode yang direkomendasikan, urutan pemanggilan penumpang, tabel perbandingan metode, dan animasi boarding.",
     },
   };
 

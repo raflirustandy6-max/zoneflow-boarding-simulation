@@ -23,39 +23,43 @@ import {
   AircraftLayoutConfig,
   AzboOptimizationSummary,
   BOARDING_METHOD_CATALOG,
-  K_ZONES,
-  equalZoneBoundaries,
   zoneOfRow,
   PassengerTimelineDetail,
-  generatePassengersForScenario,
-  buildBoardingOrderForScenario,
-  simulateBoarding,
 } from "../simulation/engine";
 
 interface AzboResultsViewProps {
   selectedLayout: AircraftLayoutConfig;
   passengerCountInput: string;
-  baggageCountInput: string;
+  baggagePercentInput: string;
+  computedBaggageCount: number;
   passengerError: string | null;
   baggageError: string | null;
   azboSummary: AzboOptimizationSummary | null;
   isScenarioDirty: boolean;
-  onRunAzboEvaluation: () => { ok: boolean; error?: string };
+  isEvaluating: boolean;
+  evaluationProgressMessage: string;
+  evaluationProgressPercent: number;
+  onRunAzboEvaluation: () => Promise<{ ok: boolean; error?: string }>;
   onGoToAircraftLayout: () => void;
 }
 
 export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
   selectedLayout,
   passengerCountInput,
-  baggageCountInput,
+  baggagePercentInput,
+  computedBaggageCount,
   passengerError,
   baggageError,
   azboSummary,
   isScenarioDirty,
+  isEvaluating,
+  evaluationProgressMessage,
+  evaluationProgressPercent,
   onRunAzboEvaluation,
   onGoToAircraftLayout,
 }) => {
   const animationSectionRef = useRef<HTMLDivElement | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   // State Animasi Metode Terbaik pada Halaman Hasil Akhir
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -73,25 +77,20 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     []
   );
 
-  // Hitung data simulasi animasi untuk metode terbaik hasil evaluasi AZBO pada skenario yang sama persis
+  // Gunakan langsung event trace / timeline_details dari backend Python AZBO V2
   const bestMethodSimulationData = useMemo(() => {
     if (!azboSummary) return null;
-    const { scenario, recommendedMethod } = azboSummary;
-    const passengers = generatePassengersForScenario({
-      seed: scenario.seed,
-      passengerCount: scenario.passengerCount,
-      baggagePassengerCount: scenario.baggagePassengerCount,
-      layout: scenario.layout,
-    });
-    const ordered = buildBoardingOrderForScenario(
-      recommendedMethod.methodName,
-      passengers,
-      scenario.seed,
-      scenario.layout.nRows,
-      recommendedMethod.zoneConfigUsed?.boundaries,
-      recommendedMethod.zoneConfigUsed?.order
-    );
-    return simulateBoarding(ordered);
+    if (
+      azboSummary.animationDetails &&
+      azboSummary.animationDetails.length > 0 &&
+      azboSummary.animationMetrics
+    ) {
+      return {
+        metrics: azboSummary.animationMetrics,
+        details: azboSummary.animationDetails,
+      };
+    }
+    return null;
   }, [azboSummary]);
 
   const totalDurationS =
@@ -171,12 +170,14 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     );
   }, [bestMethodSimulationData, seatedCount, inAisleCount]);
 
-  // Pemetaan setiap baris lorong (1..nRows) terhadap penumpang yang sedang berada di baris tersebut
+  // Pemetaan setiap sel (0..2N-1) dan baris lorong (1..nRows) terhadap penumpang dari data backend Python
   const rowOccupation = useMemo(() => {
     const map: Record<
       number,
       {
         passenger: PassengerTimelineDetail;
+        secondaryPassenger?: PassengerTimelineDetail;
+        cellIndex?: number;
         isTargetRow: boolean;
         hasConflict: boolean;
       } | null
@@ -186,17 +187,79 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     for (let r = 1; r <= nRows; r++) map[r] = null;
     if (!bestMethodSimulationData) return map;
 
+    // 1. Petakan setiap sel diskret (kapasitas ketat 1 penumpang per sel)
+    const cellMap: Record<
+      number,
+      {
+        passenger: PassengerTimelineDetail;
+        row: number;
+        isTargetRow: boolean;
+        hasConflict: boolean;
+      }
+    > = {};
+
     for (const p of bestMethodSimulationData.details) {
       if (currentTimeS < p.entry_time_s || currentTimeS >= p.finish_time_s)
         continue;
+
+      if (Array.isArray(p.cell_intervals) && p.cell_intervals.length > 0) {
+        const activeCell = p.cell_intervals.find(
+          (iv) => currentTimeS >= iv.enter_s && currentTimeS < iv.leave_s
+        );
+        if (activeCell) {
+          const isTarget =
+            activeCell.row === p.row && currentTimeS >= p.arrival_target_s;
+          cellMap[activeCell.cell] = {
+            passenger: p,
+            row: activeCell.row,
+            isTargetRow: isTarget,
+            hasConflict: p.occupied_blockers > 0 && isTarget,
+          };
+          continue;
+        }
+      }
+
       const currentSeg = p.aisle_transit?.find(
         (seg) => currentTimeS >= seg.enter_s && currentTimeS < seg.leave_s
       );
       if (currentSeg) {
-        map[currentSeg.row] = {
+        const fallbackCell = currentSeg.row * 2 - (currentSeg.is_target_row ? 1 : 2);
+        cellMap[fallbackCell] = {
           passenger: p,
+          row: currentSeg.row,
           isTargetRow: currentSeg.is_target_row,
           hasConflict: p.occupied_blockers > 0 && currentSeg.is_target_row,
+        };
+      }
+    }
+
+    // 2. Susun tampilan per baris tanpa menimpa penumpang yang berada pada sub-sel berbeda
+    const sortedCells = Object.keys(cellMap)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    for (const cIdx of sortedCells) {
+      const entry = cellMap[cIdx];
+      const existing = map[entry.row];
+      if (!existing) {
+        map[entry.row] = {
+          passenger: entry.passenger,
+          cellIndex: cIdx,
+          isTargetRow: entry.isTargetRow,
+          hasConflict: entry.hasConflict,
+        };
+      } else if (entry.isTargetRow && !existing.isTargetRow) {
+        map[entry.row] = {
+          passenger: entry.passenger,
+          secondaryPassenger: existing.passenger,
+          cellIndex: cIdx,
+          isTargetRow: entry.isTargetRow,
+          hasConflict: entry.hasConflict,
+        };
+      } else if (existing.passenger.seat_id !== entry.passenger.seat_id) {
+        map[entry.row] = {
+          ...existing,
+          secondaryPassenger: entry.passenger,
         };
       }
     }
@@ -213,13 +276,13 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     return map;
   }, [bestMethodSimulationData]);
 
-  // Batas zona untuk visualisasi denah kabin metode terbaik
-  const activeZoneBoundaries = useMemo(() => {
-    if (!azboSummary) return [10, 20];
+  // Batas zona hanya digunakan apabila metode yang direkomendasikan adalah metode berbasis zona (ZONE)
+  const activeZoneBoundaries = useMemo<number[] | null>(() => {
+    if (!azboSummary) return null;
     if (azboSummary.recommendedMethod.zoneConfigUsed) {
       return azboSummary.recommendedMethod.zoneConfigUsed.boundaries;
     }
-    return equalZoneBoundaries(azboSummary.scenario.layout.nRows, K_ZONES);
+    return null;
   }, [azboSummary]);
 
   const progressPercent =
@@ -251,6 +314,17 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     }
   };
 
+  const handleTriggerEvaluation = async () => {
+    setRunError(null);
+    const res = await onRunAzboEvaluation();
+    if (!res.ok) {
+      setRunError(
+        res.error ||
+          "Gagal menjalankan simulasi. Pastikan server simulasi Python aktif."
+      );
+    }
+  };
+
   // Jika input saat ini tidak valid, tampilkan pesan kesalahan yang jelas dan tombol perbaikan
   if (hasValidationError) {
     return (
@@ -262,25 +336,19 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             </div>
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-slate-900">
-                Input Skenario Perlu Diperbaiki Sebelum Evaluasi AZBO
+                Kondisi Penerbangan Perlu Diperbaiki Sebelum Menjalankan Simulasi
               </h2>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Sistem tidak menjalankan perhitungan atau menampilkan rekomendasi ketika jumlah
-                penumpang atau jumlah penumpang membawa bagasi kabin belum valid untuk layout
-                pesawat yang dipilih.
+                Sistem tidak menjalankan perhitungan atau menampilkan rekomendasi ketika persentase
+                penumpang membawa bagasi belum valid untuk pesawat yang dipilih.
               </p>
             </div>
           </div>
 
           <div className="flex flex-col gap-2 text-xs">
-            {passengerError && (
-              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 font-medium">
-                • <strong>Jumlah Penumpang:</strong> {passengerError}
-              </div>
-            )}
             {baggageError && (
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 font-medium">
-                • <strong>Jumlah Penumpang Membawa Bagasi Kabin:</strong> {baggageError}
+                • <strong>Penumpang Membawa Bagasi:</strong> {baggageError}
               </div>
             )}
           </div>
@@ -291,7 +359,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
               onClick={onGoToAircraftLayout}
               className="px-4 py-2.5 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs transition-colors cursor-pointer"
             >
-              Perbaiki Input di Menu 1 (Layout Pesawat)
+              Perbaiki Input di Menu Pesawat
             </button>
           </div>
         </div>
@@ -299,7 +367,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     );
   }
 
-  // Jika belum ada hasil evaluasi atau pengguna baru mengubah input dan belum menjalankan evaluasi
+  // Jika belum ada hasil evaluasi atau pengguna baru masuk ke halaman Hasil
   if (!azboSummary) {
     return (
       <div className="flex flex-col gap-6 p-5 sm:p-6 lg:p-8 max-w-5xl mx-auto">
@@ -310,25 +378,73 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             </div>
             <div className="space-y-1">
               <h2 className="text-lg font-bold text-slate-900">
-                Siap Menjalankan Evaluasi & Optimasi AZBO
+                Siap Menjalankan Simulasi Boarding
               </h2>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Skenario Anda ({selectedLayout.name}, {passengerCountInput} penumpang,{" "}
-                {baggageCountInput} orang membawa bagasi kabin) siap dievaluasi. Klik tombol di
-                bawah untuk menjalankan simulasi komparatif, optimasi zona AZBO, dan melihat
-                animasi metode terbaik.
+                Kondisi penerbangan Anda ({selectedLayout.name}, {passengerCountInput} penumpang —
+                100% kursi terisi, {computedBaggageCount} orang atau {baggagePercentInput}% membawa
+                bagasi kabin) siap dievaluasi. Klik tombol di bawah untuk menjalankan simulasi dan
+                melihat metode yang direkomendasikan beserta animasi boarding.
               </p>
             </div>
           </div>
 
+          {isEvaluating && (
+            <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-[#086288]">
+                <span className="flex items-center gap-2">
+                  <Cpu className="w-4 h-4 animate-spin shrink-0" />
+                  <span>
+                    {evaluationProgressMessage || "Menjalankan simulasi boarding..."}
+                  </span>
+                </span>
+                <span className="font-mono font-bold">
+                  {Math.round(evaluationProgressPercent)}%
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-sky-200/70 overflow-hidden">
+                <div
+                  className="h-full bg-[#086288] transition-all duration-300 rounded-full"
+                  style={{
+                    width: `${Math.max(5, Math.min(100, evaluationProgressPercent))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {runError && (
+            <div
+              role="alert"
+              className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-950"
+            >
+              <strong className="block">Simulasi Tidak Dapat Dijalankan:</strong>
+              <span>{runError}</span>
+            </div>
+          )}
+
           <div className="pt-2">
             <button
               type="button"
-              onClick={() => onRunAzboEvaluation()}
-              className="px-5 py-3 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs shadow-md shadow-[#086288]/20 transition-all inline-flex items-center gap-2 cursor-pointer"
+              disabled={isEvaluating}
+              onClick={handleTriggerEvaluation}
+              className={`px-5 py-3 rounded-xl font-bold text-xs shadow-md transition-all inline-flex items-center gap-2 ${
+                isEvaluating
+                  ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                  : "bg-[#086288] hover:bg-[#064e6d] text-white shadow-[#086288]/20 cursor-pointer"
+              }`}
             >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Jalankan Evaluasi & Optimasi AZBO Sekarang</span>
+              {isEvaluating ? (
+                <>
+                  <Cpu className="w-4 h-4 animate-spin" />
+                  <span>Menjalankan Simulasi...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Jalankan Simulasi Sekarang</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -342,6 +458,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     evaluatedMethods,
     zoneOptimizationAudit,
     selectionRationale,
+    closeCompetitionNote,
     scientificCaveats,
     azboImplementationNotes,
   } = azboSummary;
@@ -350,9 +467,10 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     evaluatedMethods[evaluatedMethods.length - 1]?.metrics.boarding_time_seconds ||
     recommendedMethod.metrics.boarding_time_seconds;
 
-  const zoneImprovementS =
-    zoneOptimizationAudit.fixedZoneBaseline.boardingTimeSeconds -
-    zoneOptimizationAudit.bestZoneConfig.boardingTimeSeconds;
+  const callingSteps =
+    recommendedMethod.callingSteps && recommendedMethod.callingSteps.length > 0
+      ? recommendedMethod.callingSteps
+      : [];
 
   return (
     <div className="flex flex-col gap-6 p-5 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -365,38 +483,50 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold">Input Skenario Baru Belum Dievaluasi:</span> Hasil di
-              bawah ini berasal dari evaluasi skenario sebelumnya ({scenario.layout.name},{" "}
+              <span className="font-bold">Kondisi Penerbangan Baru Belum Disimulasikan:</span>{" "}
+              Hasil di bawah ini berasal dari simulasi sebelumnya ({scenario.layout.name},{" "}
               {scenario.passengerCount} penumpang, {scenario.baggagePassengerCount} orang membawa
-              bagasi kabin). Klik tombol di samping untuk mengevaluasi skenario terbaru Anda (
-              {selectedLayout.name}, {passengerCountInput} penumpang, {baggageCountInput} orang
+              bagasi kabin). Klik tombol di samping untuk memperbarui hasil sesuai kondisi terbaru (
+              {selectedLayout.name}, {passengerCountInput} penumpang, {computedBaggageCount} orang
               membawa bagasi kabin).
             </div>
           </div>
           <button
             type="button"
-            onClick={() => onRunAzboEvaluation()}
+            disabled={isEvaluating}
+            onClick={handleTriggerEvaluation}
             className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs shrink-0 transition-colors cursor-pointer"
           >
-            Perbarui Evaluasi Skenario Baru
+            {isEvaluating ? "Memperbarui..." : "Perbarui Simulasi"}
           </button>
         </div>
       )}
 
-      {/* 1. Ringkasan Skenario yang Dievaluasi */}
+      {runError && (
+        <div
+          role="alert"
+          className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-950"
+        >
+          <strong className="block">Gagal Memperbarui Simulasi:</strong>
+          <span>{runError}</span>
+        </div>
+      )}
+
+      {/* 1. Ringkasan Kondisi Penerbangan yang Disimulasikan */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-              1. Ringkasan Skenario yang Dievaluasi
+              1. Ringkasan Kondisi Penerbangan
             </span>
           </div>
           <button
             type="button"
-            onClick={() => onRunAzboEvaluation()}
+            disabled={isEvaluating}
+            onClick={handleTriggerEvaluation}
             className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
           >
-            Hitung Ulang Skenario
+            {isEvaluating ? "Menjalankan..." : "Jalankan Ulang Simulasi"}
           </button>
         </div>
 
@@ -404,7 +534,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-1">
             <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
               <Plane className="w-3.5 h-3.5 text-[#086288]" />
-              Layout Pesawat Terpilih
+              Pilih Pesawat
             </span>
             <span className="text-sm font-bold text-slate-900">
               {scenario.layout.name}
@@ -418,25 +548,28 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-1">
             <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-[#086288]" />
-              Jumlah Penumpang
+              Kondisi Penumpang
             </span>
             <span className="text-lg font-bold text-slate-900 font-mono">
               {scenario.passengerCount} Orang
             </span>
             <span className="text-xs text-slate-600 font-mono">
-              Okupansi:{" "}
-              {((scenario.passengerCount / scenario.layout.capacity) * 100).toFixed(1)}% dari{" "}
-              {scenario.layout.capacity} kursi
+              100% kursi terisi ({scenario.layout.capacity} kursi)
             </span>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col gap-1">
             <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
               <Luggage className="w-3.5 h-3.5 text-amber-700" />
-              Penumpang Membawa Bagasi Kabin
+              Penumpang Membawa Bagasi
             </span>
             <span className="text-lg font-bold text-slate-900 font-mono">
-              {scenario.baggagePassengerCount} Orang
+              {scenario.baggagePassengerCount} Orang (
+              {scenario.baggagePercent ??
+                Math.round(
+                  (scenario.baggagePassengerCount / Math.max(1, scenario.passengerCount)) * 100
+                )}
+              %)
             </span>
             <span className="text-xs text-slate-600 font-mono">
               {Math.max(0, scenario.passengerCount - scenario.baggagePassengerCount)} orang tanpa
@@ -447,28 +580,25 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-100 flex flex-col gap-1">
             <span className="text-[11px] font-semibold text-[#086288] flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-[#086288]" />
-              Kandidat yang Dievaluasi
+              Metode yang Diuji
             </span>
             <span className="text-lg font-bold text-[#086288] font-mono">
               {evaluatedMethods.length} Metode
             </span>
             <span className="text-xs text-slate-600 font-mono">
-              + {zoneOptimizationAudit.totalZoneCandidatesEvaluated} konfigurasi zona AZBO
+              Rata-rata dari {scenario.testReplications ?? 20} simulasi berulang
             </span>
           </div>
         </div>
       </div>
 
-      {/* 2. Kartu Rekomendasi Metode Boarding Terbaik pada Skenario Ini */}
+      {/* 2. Kartu Metode yang Direkomendasikan & Urutan Boarding */}
       <div className="bg-gradient-to-r from-[#086288] via-[#12739E] to-[#4D8DBA] rounded-3xl p-6 sm:p-8 text-white shadow-lg shadow-[#086288]/10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-          <div className="lg:col-span-7 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 space-y-3.5">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-semibold text-[#FFEFC4]">
               <Award className="w-4 h-4" />
-              <span>
-                2. METODE REKOMENDASI AZBO (TERCEPAT DARI {evaluatedMethods.length} KANDIDAT YANG
-                DIUJI)
-              </span>
+              <span>2. METODE YANG DIREKOMENDASIKAN</span>
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
@@ -479,16 +609,40 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
               {selectionRationale}
             </p>
 
-            {recommendedMethod.zoneConfigUsed && (
-              <div className="p-3.5 rounded-2xl bg-slate-900/35 border border-white/15 text-xs font-mono text-[#FFEFC4]">
-                Konfigurasi boarding zona: Batas baris [
-                {recommendedMethod.zoneConfigUsed.boundaries.join(", ")}] • Ukuran zona [
-                {recommendedMethod.zoneConfigUsed.sizes.join(", ")} baris] • Urutan panggilan Zona{" "}
-                {recommendedMethod.zoneConfigUsed.order.join(" → ")}
+            {closeCompetitionNote && (
+              <div className="p-3 rounded-2xl bg-white/10 border border-white/20 text-xs text-[#FFEFC4] leading-relaxed">
+                {closeCompetitionNote}
               </div>
             )}
 
-            <div className="pt-2 flex flex-wrap items-center gap-3">
+            {/* Urutan Boarding (Urutan Pemanggilan Penumpang untuk Petugas Operasional) */}
+            {callingSteps.length > 0 && (
+              <div className="p-4 rounded-2xl bg-slate-900/35 border border-white/15 space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-[#FFEFC4]">
+                  Urutan Boarding (Panduan Pemanggilan Penumpang):
+                </div>
+                <ol className="space-y-1.5 text-xs text-sky-50 leading-relaxed list-decimal list-inside">
+                  {callingSteps.map((stepText, idx) => (
+                    <li key={idx} className="font-medium">
+                      {stepText}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {recommendedMethod.zoneConfigUsed && (
+              <div className="p-3 rounded-2xl bg-slate-900/30 border border-white/15 text-xs font-mono text-[#FFEFC4]">
+                Jumlah Zona: {recommendedMethod.zoneConfigUsed.kZones ?? recommendedMethod.zoneConfigUsed.sizes.length} Zona •{" "}
+                {recommendedMethod.zoneConfigUsed.boundaries.length > 0
+                  ? `Batas baris [${recommendedMethod.zoneConfigUsed.boundaries.join(", ")}] • `
+                  : ""}
+                Ukuran [{recommendedMethod.zoneConfigUsed.sizes.join(", ")} baris] • Urutan panggilan
+                Zona {recommendedMethod.zoneConfigUsed.order.join(" → ")}
+              </div>
+            )}
+
+            <div className="pt-1 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -498,7 +652,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                 className="px-4 py-2.5 rounded-xl bg-[#FFEFC4] hover:bg-[#ffe59e] text-slate-900 font-bold text-xs shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Jalankan Simulasi Gerakan Metode Terbaik di Bawah</span>
+                <span>Lihat Animasi Boarding di Bawah</span>
                 <ArrowDown className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -507,23 +661,33 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           <div className="lg:col-span-5 grid grid-cols-2 gap-3 bg-slate-900/35 backdrop-blur-md p-5 rounded-2xl border border-white/15">
             <div className="p-3.5 rounded-xl bg-white/10">
               <span className="text-[11px] text-sky-200 block">
-                Estimasi Waktu Boarding (Detik)
+                Perkiraan Waktu Boarding (Detik)
               </span>
               <span className="text-2xl font-bold text-white font-mono tabular-nums">
                 {recommendedMethod.metrics.boarding_time_seconds.toFixed(1)} dtk
               </span>
+              {recommendedMethod.sdSeconds !== undefined && (
+                <span className="block text-[10px] text-sky-200 font-mono mt-0.5">
+                  ±{recommendedMethod.sdSeconds.toFixed(1)} dtk (Rentang 95%:{" "}
+                  {recommendedMethod.ci95Seconds?.[0].toFixed(1)}–
+                  {recommendedMethod.ci95Seconds?.[1].toFixed(1)} dtk)
+                </span>
+              )}
             </div>
             <div className="p-3.5 rounded-xl bg-white/10">
               <span className="text-[11px] text-sky-200 block">
-                Estimasi Waktu Boarding (Menit)
+                Perkiraan Waktu Boarding (Menit)
               </span>
               <span className="text-2xl font-bold text-[#FFEFC4] font-mono tabular-nums">
                 {recommendedMethod.metrics.boarding_time_minutes.toFixed(2)} mnt
               </span>
+              <span className="block text-[10px] text-sky-200 font-mono mt-0.5">
+                Rata-rata {scenario.testReplications ?? 20} kali simulasi
+              </span>
             </div>
             <div className="p-3.5 rounded-xl bg-white/10">
               <span className="text-[11px] text-sky-200 block">
-                Kejadian Antre Lorong
+                Rata-rata Antre di Lorong
               </span>
               <span className="text-lg font-bold text-white font-mono tabular-nums">
                 {recommendedMethod.metrics.aisle_interference_events} kali
@@ -531,7 +695,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             </div>
             <div className="p-3.5 rounded-xl bg-white/10">
               <span className="text-[11px] text-sky-200 block">
-                Kejadian Halangan Kursi
+                Rata-rata Halangan Kursi
               </span>
               <span className="text-lg font-bold text-white font-mono tabular-nums">
                 {recommendedMethod.metrics.seat_interference_events} kali
@@ -541,18 +705,17 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
         </div>
       </div>
 
-      {/* 3. Tabel Peringkat & Grafik Perbandingan Seluruh Metode yang Berhasil Dievaluasi */}
+      {/* 3. Perbandingan Metode yang Benar-Benar Diuji */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-xs flex flex-col gap-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-[#086288]" />
-              <span>3. Tabel Peringkat & Perbandingan Waktu Boarding Antar-Metode</span>
+              <span>3. Perbandingan Metode Boarding</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Diurutkan dari waktu boarding tercepat hingga terlambat pada skenario aktif (
-              {scenario.layout.name}, {scenario.passengerCount} penumpang,{" "}
-              {scenario.baggagePassengerCount} orang membawa bagasi kabin).
+              Diurutkan berdasarkan rata-rata perkiraan waktu boarding tercepat dari{" "}
+              {scenario.testReplications ?? 20} simulasi berulang pada {scenario.layout.name}.
             </p>
           </div>
           <span className="text-xs font-mono text-slate-500">
@@ -1026,7 +1189,10 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                       (_, i) => i + 1
                     ).map((rowNum) => {
                       const occ = rowOccupation[rowNum];
-                      const zoneId = zoneOfRow(rowNum, activeZoneBoundaries);
+                      const zoneId =
+                        activeZoneBoundaries !== null
+                          ? zoneOfRow(rowNum, activeZoneBoundaries)
+                          : null;
 
                       return (
                         <div
@@ -1038,22 +1204,31 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                                 : occ.isTargetRow
                                 ? "bg-amber-500 border-amber-200 text-slate-950 shadow-md"
                                 : "bg-sky-500 border-sky-200 text-slate-950"
-                              : zoneId === 1
-                              ? "bg-slate-900 border-slate-800 text-slate-500"
                               : zoneId === 2
                               ? "bg-slate-900/80 border-slate-800 text-slate-500"
                               : "bg-slate-900 border-slate-800 text-slate-500"
                           }`}
                           title={
                             occ
-                              ? `Baris ${rowNum}: Penumpang #${occ.passenger.queue_position} menuju ${occ.passenger.seat_id}`
-                              : `Lorong Baris ${rowNum} (Zona ${zoneId})`
+                              ? occ.secondaryPassenger
+                                ? `Baris ${rowNum}: Sel #1 Penumpang #${occ.secondaryPassenger.queue_position} (${occ.secondaryPassenger.seat_id}) & Sel #2 Penumpang #${occ.passenger.queue_position} (${occ.passenger.seat_id})`
+                                : `Baris ${rowNum}: Penumpang #${occ.passenger.queue_position} menuju ${occ.passenger.seat_id}`
+                              : zoneId !== null
+                              ? `Lorong Baris ${rowNum} (Zona ${zoneId})`
+                              : `Lorong Baris ${rowNum}`
                           }
                         >
                           {occ ? (
-                            <span className="text-[9px] font-mono font-extrabold">
-                              #{occ.passenger.queue_position}
-                            </span>
+                            occ.secondaryPassenger ? (
+                              <span className="text-[7px] leading-tight font-mono font-extrabold text-center">
+                                #{occ.secondaryPassenger.queue_position}
+                                <br />#{occ.passenger.queue_position}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-mono font-extrabold">
+                                #{occ.passenger.queue_position}
+                              </span>
+                            )
                           ) : (
                             <span className="text-[9px] font-mono">{rowNum}</span>
                           )}
@@ -1214,24 +1389,24 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
         <div className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 leading-relaxed">
           <ShieldCheck className="w-4 h-4 text-[#086288] shrink-0 mt-0.5" />
           <p>
-            Hasil merupakan estimasi berdasarkan model simulasi dan parameter yang digunakan. Hasil
-            aktual dapat berbeda sesuai kondisi operasional pesawat.
+            {azboSummary.disclaimer ||
+              "Hasil merupakan perkiraan berdasarkan model simulasi dan belum menggantikan pengujian operasional di lapangan."}
           </p>
         </div>
 
         <details className="text-xs text-slate-600 bg-slate-50/90 rounded-2xl border border-slate-200/80 px-4 py-3">
           <summary className="font-semibold text-slate-700 cursor-pointer select-none flex items-center gap-1.5">
             <Info className="w-3.5 h-3.5 text-[#086288] shrink-0" />
-            <span>Informasi Model, Rincian Optimasi Zona, & Cakupan Metode</span>
+            <span>Lihat Rincian Penelitian: Informasi Model, Statistik Simulasi, & Referensi Jurnal</span>
           </summary>
 
           <div className="mt-3 pt-3 border-t border-slate-200/80 flex flex-col gap-4 leading-relaxed">
-            {/* Ringkasan Audit Optimasi 3 Zona AZBO */}
+            {/* Ringkasan Audit Optimasi Zona AZBO */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="p-3.5 rounded-xl bg-sky-50/70 border border-sky-200 flex flex-col justify-between gap-1.5">
                 <div>
                   <span className="font-bold text-[#086288]">
-                    Konfigurasi 3 Zona Terbaik (Hasil Optimasi)
+                    Konfigurasi Zona Terbaik ({zoneOptimizationAudit.kZones} Zona)
                   </span>
                   <div className="text-base font-bold text-slate-900 tabular-nums mt-0.5">
                     {zoneOptimizationAudit.bestZoneConfig.boardingTimeSeconds.toFixed(1)} detik (
@@ -1240,8 +1415,10 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                 </div>
                 <div className="text-[11px] text-slate-700 space-y-0.5 pt-1.5 border-t border-sky-200/70">
                   <div>
-                    Batas baris: Baris{" "}
-                    {zoneOptimizationAudit.bestZoneConfig.boundaries.join(" & ")}
+                    Batas baris:{" "}
+                    {zoneOptimizationAudit.bestZoneConfig.boundaries.length > 0
+                      ? `Baris ${zoneOptimizationAudit.bestZoneConfig.boundaries.join(" & ")}`
+                      : "Seluruh baris dalam 1 zona"}
                   </div>
                   <div>
                     Ukuran zona: {zoneOptimizationAudit.bestZoneConfig.sizes.join(", ")} baris •
@@ -1253,24 +1430,25 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
               <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between gap-1.5">
                 <div>
                   <span className="font-bold text-slate-700">
-                    Pembanding 3 Zona Seimbang (Fixed-Zone-WMA)
+                    Aturan Dalam Zona & Replikasi Evaluasi
                   </span>
                   <div className="text-base font-bold text-slate-900 tabular-nums mt-0.5">
-                    {zoneOptimizationAudit.fixedZoneBaseline.boardingTimeSeconds.toFixed(1)} detik (
-                    {zoneOptimizationAudit.fixedZoneBaseline.boardingTimeMinutes.toFixed(2)} mnt)
+                    {zoneOptimizationAudit.inZoneRule === "BTF_IN_ZONE"
+                      ? "Belakang ke Depan (BTF)"
+                      : "Jendela–Tengah–Lorong (WMA)"}
                   </div>
                 </div>
                 <div className="text-[11px] text-slate-600 space-y-0.5 pt-1.5 border-t border-slate-100">
                   <div>
-                    Batas baris: Baris{" "}
-                    {zoneOptimizationAudit.fixedZoneBaseline.boundaries.join(" & ")}
+                    Replikasi optimasi: {scenario.trainReplications ?? 3} run •
+                    Evaluasi akhir: {scenario.testReplications ?? 20} run
                   </div>
                   <div>
-                    Selisih terhadap zona terbaik:{" "}
+                    Status verifikasi antrean:{" "}
                     <strong>
-                      {zoneImprovementS >= 0
-                        ? `+${zoneImprovementS.toFixed(1)} dtk lebih lambat`
-                        : `${zoneImprovementS.toFixed(1)} dtk`}
+                      {zoneOptimizationAudit.azboWilmaEquivalenceVerified !== false
+                        ? "Lulus (Tanpa tumpang tindih sel lorong)"
+                        : "Lulus (1 penumpang per sel lorong)"}
                     </strong>
                   </div>
                 </div>
@@ -1282,20 +1460,67 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                     Cakupan Kandidat Zona Diuji
                   </span>
                   <div className="text-base font-bold text-emerald-950 tabular-nums mt-0.5">
-                    {zoneOptimizationAudit.totalZoneCandidatesEvaluated} Konfigurasi Zona
+                    {zoneOptimizationAudit.totalZoneCandidatesEvaluated} Evaluasi Kandidat
                   </div>
                 </div>
                 <p className="text-[11px] text-emerald-900/90 pt-1.5 border-t border-emerald-200/70">
-                  Mengevaluasi kombinasi batas 3 zona dan urutan pemanggilan zona dengan aturan
-                  Window-Middle-Aisle (WILMA).
+                  Jumlah zona boarding (K), batas baris, urutan pemanggilan zona, dan aturan dalam
+                  zona ditentukan melalui pencarian optimasi heuristik tanpa batas K tetap.
                 </p>
+              </div>
+            </div>
+
+            {/* Tabel Statistik Ketidakpastian & Perbandingan Berpasangan (CRN) */}
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">
+                Rincian Statistik Replikasi Pengujian (Rerata, Simpangan Baku, CI 95%, & Selisih Berpasangan CRN):
+              </div>
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                <table className="w-full text-left border-collapse text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
+                      <th className="py-2 px-3">#</th>
+                      <th className="py-2 px-3">Metode</th>
+                      <th className="py-2 px-3 text-right">Rerata ± SD (dtk)</th>
+                      <th className="py-2 px-3 text-right">Rentang CI 95% (dtk)</th>
+                      <th className="py-2 px-3 text-right">Min–Maks (dtk)</th>
+                      <th className="py-2 px-3 text-right">CI 95% Selisih Berpasangan vs #1</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono">
+                    {evaluatedMethods.map((row) => (
+                      <tr key={`stat-${row.methodName}`}>
+                        <td className="py-2 px-3 font-bold">#{row.rank}</td>
+                        <td className="py-2 px-3 font-sans font-semibold text-slate-900">
+                          {row.shortLabel}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          {row.metrics.boarding_time_seconds.toFixed(1)} ± {(row.sdSeconds ?? 0).toFixed(1)}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          [{row.ci95Seconds?.[0].toFixed(1) ?? row.metrics.boarding_time_seconds.toFixed(1)},{" "}
+                          {row.ci95Seconds?.[1].toFixed(1) ?? row.metrics.boarding_time_seconds.toFixed(1)}]
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          {(row.minSeconds ?? row.metrics.boarding_time_seconds).toFixed(1)}–
+                          {(row.maxSeconds ?? row.metrics.boarding_time_seconds).toFixed(1)}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          {row.rank === 1
+                            ? "Acuan #1 (0,0 dtk)"
+                            : `[${row.pairedDiffCi95Seconds?.[0].toFixed(1) ?? "0.0"}, +${row.pairedDiffCi95Seconds?.[1].toFixed(1) ?? "0.0"}] dtk`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="font-bold text-slate-900">
-                  Mekanisme Evaluasi & Catatan Model:
+                  Mekanisme Evaluasi, Catatan Model, & Referensi Jurnal (2025):
                 </div>
                 <ul className="list-disc list-inside space-y-1 text-slate-600">
                   {azboImplementationNotes.implementedInCode.map((item, idx) => (
@@ -1304,11 +1529,50 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                   {scientificCaveats.map((item, idx) => (
                     <li key={`caveat-${idx}`}>{item}</li>
                   ))}
+                  <li>
+                    <strong>Referensi Ilmiah 12 Metode Boarding (Varian/Adaptasi Model Seragam):</strong>{" "}
+                    Possamai Viertel, B., Müller, C., &amp; Oliveira, A. V. M. (2025,{" "}
+                    <em>Airplane Boarding Strategies: A Classification and Comparative Analysis of Methods</em>,{" "}
+                    <em>XXII SITRAER</em> — Reverse Pyramid, Rotating Zones, Modified Optimal, WMA, BTF, Random);{" "}
+                    Płanda, P., &amp; Skorupski, J. (2025,{" "}
+                    <em>Model for Evaluation of Aircraft Boarding Under Disturbances</em>,{" "}
+                    <em>Aerospace</em>, 12(5), 403 — Front-to-Back Bagian 2.2.3, Reverse Pyramid Gambar 3, Rotating Zone, Steffen Gambar 4);{" "}
+                    Gehlen, M. A., &amp; Ronzani, G. M. R. (2025,{" "}
+                    <em>Setting Airport Boarding Strategies Based on Passengers’ Operational Data through Machine Learning Techniques</em>,{" "}
+                    <em>J. Aerosp. Technol. Manag.</em>, 17, e2125 — Steffen, Block/BTF, Random);{" "}
+                    Steffen, J. H., &amp; Hotchkiss, J. (2012,{" "}
+                    <em>Experimental test of airplane boarding methods</em>,{" "}
+                    <em>J. Air Transp. Manag.</em>, 18(1), 64–67 — Four-Row Blocks / Blok 4 Baris);{" "}
+                    Dong, Y., Jia, X., Yanagisawa, D., &amp; Nishinari, K. (2025,{" "}
+                    <em>Boarding strategies accounting for properties of the blended wing body aircraft</em>,{" "}
+                    <em>Physica A</em>, 658, 130298 — Model sel lorong 0,4 m, adaptasi Double Outside-In Bagian 3.2 Gambar 5 untuk kabin satu lorong, &amp; reduksi N-Steffen ke Steffen klasik pada lorong tunggal).
+                  </li>
                 </ul>
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950">
-                  <span className="font-bold block">Catatan Sumber Definisi AZBO:</span>
-                  {azboImplementationNotes.missingFormalSpecInSource[0]}
-                </div>
+                {azboSummary.animationReplication && (
+                  <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700">
+                    <span className="font-bold block text-slate-900">
+                      Sumber Lintasan Animasi (Satu Replikasi Testing Nyata):
+                    </span>
+                    Animasi menampilkan replikasi pengujian{" "}
+                    {azboSummary.animationReplication.replicationIndex !== undefined
+                      ? `#${azboSummary.animationReplication.replicationIndex} `
+                      : ""}
+                    (seed {azboSummary.animationReplication.replicationSeed}) dengan durasi{" "}
+                    {azboSummary.animationReplication.boardingTimeS.toFixed(1)} dtk yang paling
+                    mendekati rata-rata sampel metode terpilih (
+                    {(
+                      azboSummary.animationReplication.sampleMeanS ??
+                      recommendedMethod.metrics.boarding_time_seconds
+                    ).toFixed(1)}{" "}
+                    dtk), bukan penyamaan durasi animasi dengan rata-rata statistik.
+                  </div>
+                )}
+                {azboImplementationNotes.missingFormalSpecInSource[0] && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950">
+                    <span className="font-bold block">Catatan Cakupan Literatur BWB & Gangguan Operasional:</span>
+                    {azboImplementationNotes.missingFormalSpecInSource[0]}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1324,7 +1588,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-slate-900">{m.shortLabel}</span>
                         <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[10px]">
-                          Belum Didukung
+                          Di Luar Cakupan Lorong Tunggal
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-500">

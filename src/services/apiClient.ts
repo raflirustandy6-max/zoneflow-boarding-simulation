@@ -59,6 +59,34 @@ export function normalizeApiBaseUrl(rawUrl?: string): string {
   return cleaned || "/api/v1";
 }
 
+export function resolveAzboV2BaseUrl(rawUrl?: string): string {
+  const envUrl =
+    rawUrl !== undefined
+      ? rawUrl
+      : typeof import.meta !== "undefined" && import.meta.env
+      ? import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL
+      : undefined;
+
+  const cleaned = (envUrl || "").trim().replace(/\/+$/, "");
+  if (!cleaned || cleaned === "/api/v1" || cleaned === "/api/v2" || cleaned === "/api") {
+    return "/api/v2/azbo";
+  }
+  if (cleaned.endsWith("/api/v2/azbo")) {
+    return cleaned;
+  }
+  const hostRoot = cleaned
+    .replace(/\/api\/v1$/, "")
+    .replace(/\/api\/v2$/, "")
+    .replace(/\/api$/, "");
+  return `${hostRoot}/api/v2/azbo`;
+}
+
+export function buildAzboV2EndpointUrl(subpath: string, rawUrl?: string): string {
+  const base = resolveAzboV2BaseUrl(rawUrl);
+  const normalizedSubpath = subpath.startsWith("/") ? subpath : `/${subpath}`;
+  return `${base}${normalizedSubpath}`;
+}
+
 const API_BASE_URL = normalizeApiBaseUrl(
   typeof import.meta !== "undefined" && import.meta.env
     ? import.meta.env.VITE_API_BASE_URL
@@ -685,5 +713,91 @@ export async function cancelGAJob(
     "Permintaan pembatalan optimasi GA melebihi batas waktu (timeout)."
   );
 }
+
+// ============================================================================
+// AZBO V2 Endpoint Client: /api/v2/azbo/* (Blueprint AZBO Bagian 9.1 & 9.2)
+// ============================================================================
+
+export interface AzboOptimizeV2Payload {
+  layout_id?: string;
+  layout_name?: string;
+  rows?: number;
+  left_seats?: number;
+  right_seats?: number;
+  left_letters?: string[];
+  right_letters?: string[];
+  bag_ratio?: number;
+  row_pitch_m?: number;
+  cell_m?: number;
+  ga_population?: number;
+  ga_generations?: number;
+  train_reps?: number;
+  test_reps?: number;
+  zone_call_overhead_s?: number;
+  seed?: number;
+}
+
+export interface AzboOptimizeV2Response {
+  status: string;
+  engine: string;
+  execution_time_seconds: number;
+  scenario: Record<string, any>;
+  optimization: Record<string, any>;
+  recommendation: Record<string, any>;
+  animation: Record<string, any>;
+}
+
+export async function checkAzboV2Health(timeoutMs: number = 3000): Promise<{
+  online: boolean;
+  error?: string;
+}> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(buildAzboV2EndpointUrl("/health"), {
+      method: "GET",
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      return { online: false, error: `HTTP ${res.status}` };
+    }
+    if (!isJsonContentType(res.headers.get("content-type"))) {
+      return {
+        online: false,
+        error: "Host statis tidak menjalankan layanan backend Python FastAPI.",
+      };
+    }
+    const data = await res.json();
+    return { online: data?.status === "online" };
+  } catch (err: any) {
+    clearTimeout(timer);
+    return { online: false, error: err?.message || "Gagal menghubungi backend AZBO V2." };
+  }
+}
+
+export async function optimizeAzboV2(
+  payload: AzboOptimizeV2Payload,
+  timeoutMs: number = 60000
+): Promise<AzboOptimizeV2Response> {
+  const endpointUrl = buildAzboV2EndpointUrl("/optimize");
+
+  return fetchJsonWithTimeout<AzboOptimizeV2Response>(
+    endpointUrl,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+    timeoutMs,
+    "Permintaan optimasi AZBO V2 ke backend Python melebihi batas waktu (timeout)."
+  );
+}
+
+
 
 

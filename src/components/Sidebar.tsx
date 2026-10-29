@@ -1,8 +1,8 @@
 import React from "react";
 import {
   Plane,
-  PlayCircle,
   BarChart3,
+  PlayCircle,
   Info,
   LogOut,
   CheckCircle2,
@@ -16,8 +16,8 @@ interface SidebarProps {
   activeTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   selectedLayout: AircraftLayoutConfig;
-  passengerCountInput: string;
-  baggageCountInput: string;
+  passengerCountInput?: string;
+  baggageCountInput?: string;
   hasSimulationResult: boolean;
   operatorName?: string;
   onOpenInfoModal?: () => void;
@@ -42,19 +42,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: "aircraft",
       label: "Pesawat",
-      description: "Memilih layout dan memasukkan data skenario",
+      description: "Menu 1 — Pilih Pesawat & Kondisi Penumpang",
       icon: Plane,
     },
     {
       id: "simulation",
       label: "Simulasi",
-      description: "Memeriksa skenario dan menjalankan evaluasi AZBO",
+      description: "Menu 2 — Simulasi Boarding & Jalankan Simulasi",
       icon: PlayCircle,
     },
     {
       id: "results",
       label: "Hasil",
-      description: "Melihat perbandingan metode dan simulasi metode terbaik",
+      description:
+        "Menu 3 — Metode yang Direkomendasikan, Perbandingan Metode & Animasi Boarding",
       icon: BarChart3,
       showReadyDot: hasSimulationResult,
     },
@@ -64,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 w-full px-4 sm:px-6 lg:px-8 pt-3.5 pb-1.5">
-      <div className="max-w-7xl mx-auto flex flex-col gap-2.5 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:gap-4">
+      <div className="max-w-7xl mx-auto flex flex-col gap-2.5 lg:grid lg:grid-cols-[auto_1fr_auto] lg:items-center lg:gap-4">
         {/* Baris Atas pada Mobile/Tablet (Logo di Kiri + Pengguna & Keluar di Kanan) / Kolom Kiri pada Desktop */}
         <div className="flex items-center justify-between lg:justify-start gap-3">
           {/* Area Kiri: Identitas Merek ZoneFlow */}
@@ -85,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex lg:hidden items-center justify-end gap-2 px-2.5 py-1.5 rounded-full bg-[#0d1522]/95 backdrop-blur-md border border-slate-700/80 shadow-md shadow-slate-900/10">
             <div
               role="img"
-              title={operatorName || "Petugas Operasional Bandara"}
+              title="Petugas Operasional Bandara"
               aria-label={operatorName || "Petugas Operasional Bandara"}
               className="w-9 h-9 rounded-full bg-slate-800/80 border border-slate-700/80 inline-flex items-center justify-center text-slate-200 transition-colors"
             >
@@ -118,10 +119,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Area Tengah: Kapsul Navigasi Utama (Seimbang Tepat di Tengah Layar) */}
+        {/* Area Tengah: Kapsul Navigasi Utama 3 Menu (Pesawat, Simulasi, Hasil) */}
         <nav
           aria-label="Navigasi Utama"
-          className="justify-self-center w-full sm:w-auto flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#0d1522]/95 backdrop-blur-md border border-slate-700/80 shadow-lg shadow-slate-900/15"
+          className="justify-self-center w-full sm:w-auto grid grid-cols-3 sm:flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-full bg-[#0d1522]/95 backdrop-blur-md border border-slate-700/80 shadow-lg shadow-slate-900/15"
         >
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -133,7 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => onSelectTab(item.id)}
                 title={item.description}
                 aria-current={isActive ? "page" : undefined}
-                className={`flex-1 sm:flex-initial justify-center px-4 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold inline-flex items-center gap-2 whitespace-nowrap transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#97D7FF] ${
+                className={`justify-center px-3.5 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold inline-flex items-center gap-2 whitespace-nowrap transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#97D7FF] ${
                   isActive
                     ? "bg-gradient-to-r from-[#086288] to-[#4D8DBA] text-white shadow-md shadow-[#086288]/30 border border-[#97D7FF]/40"
                     : "text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent"
@@ -161,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="hidden lg:flex items-center justify-self-end gap-2 px-2.5 py-1.5 rounded-full bg-[#0d1522]/95 backdrop-blur-md border border-slate-700/80 shadow-md shadow-slate-900/10">
           <div
             role="img"
-            title={operatorName || "Petugas Operasional Bandara"}
+            title="Petugas Operasional Bandara"
             aria-label={operatorName || "Petugas Operasional Bandara"}
             className="w-9 h-9 rounded-full bg-slate-800/80 border border-slate-700/80 inline-flex items-center justify-center text-slate-200 transition-colors"
           >
