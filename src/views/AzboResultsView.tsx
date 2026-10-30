@@ -13,18 +13,13 @@ import {
   Pause,
   RotateCcw,
   FastForward,
-  Info,
   Cpu,
-  ShieldCheck,
   X,
   ArrowDown,
 } from "lucide-react";
 import {
   AircraftLayoutConfig,
-  AzboExecutionEngine,
   AzboOptimizationSummary,
-  BOARDING_METHOD_CATALOG,
-  getAzboExecutionEngineLabel,
   zoneOfRow,
   PassengerTimelineDetail,
 } from "../simulation/engine";
@@ -41,14 +36,9 @@ interface AzboResultsViewProps {
   isEvaluating: boolean;
   evaluationProgressMessage: string;
   evaluationProgressPercent: number;
-  executionEngine: AzboExecutionEngine;
-  canOfferPyodideFallback: boolean;
-  onChangeExecutionEngine: (engine: AzboExecutionEngine) => void;
-  onRunAzboEvaluation: (overrideEngine?: AzboExecutionEngine) => Promise<{
+  onRunAzboEvaluation: () => Promise<{
     ok: boolean;
     error?: string;
-    canFallbackToPyodide?: boolean;
-    engineUsed?: AzboExecutionEngine;
   }>;
   onGoToAircraftLayout: () => void;
 }
@@ -65,16 +55,11 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
   isEvaluating,
   evaluationProgressMessage,
   evaluationProgressPercent,
-  executionEngine,
-  canOfferPyodideFallback,
-  onChangeExecutionEngine,
   onRunAzboEvaluation,
   onGoToAircraftLayout,
 }) => {
   const animationSectionRef = useRef<HTMLDivElement | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
-  const [showPyodideFallbackButton, setShowPyodideFallbackButton] =
-    useState<boolean>(false);
 
   // State Animasi Metode Terbaik pada Halaman Hasil Akhir
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -87,10 +72,6 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
   const lastWallTimeRef = useRef<number | null>(null);
 
   const hasValidationError = Boolean(passengerError || baggageError);
-  const unsupportedMethods = useMemo(
-    () => BOARDING_METHOD_CATALOG.filter((m) => !m.supportedInSimulator),
-    []
-  );
 
   // Gunakan langsung event trace / timeline_details dari backend Python AZBO V2
   const bestMethodSimulationData = useMemo(() => {
@@ -329,17 +310,14 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     }
   };
 
-  const handleTriggerEvaluation = async (overrideEngine?: AzboExecutionEngine) => {
+  const handleTriggerEvaluation = async () => {
     if (isEvaluating) return;
     setRunError(null);
-    setShowPyodideFallbackButton(false);
-    const res = await onRunAzboEvaluation(overrideEngine);
+    const res = await onRunAzboEvaluation();
     if (!res.ok) {
       setRunError(
-        res.error ||
-          "Gagal menjalankan simulasi. Pastikan server simulasi Python aktif."
+        res.error || "Gagal menjalankan simulasi boarding di browser."
       );
-      setShowPyodideFallbackButton(Boolean(res.canFallbackToPyodide));
     }
   };
 
@@ -407,49 +385,6 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             </div>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 font-bold text-slate-800">
-              <Cpu className="w-4 h-4 text-[#086288] shrink-0" />
-              <span data-testid="results-active-engine-label">
-                {getAzboExecutionEngineLabel(executionEngine)}
-              </span>
-            </div>
-            <div className="inline-flex items-center p-1 rounded-xl bg-white border border-slate-200/90 self-start sm:self-center">
-              <button
-                type="button"
-                disabled={isEvaluating}
-                onClick={() => {
-                  onChangeExecutionEngine("pythonanywhere");
-                  setRunError(null);
-                  setShowPyodideFallbackButton(false);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  executionEngine === "pythonanywhere"
-                    ? "bg-[#086288] text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                PythonAnywhere (Utama)
-              </button>
-              <button
-                type="button"
-                disabled={isEvaluating}
-                onClick={() => {
-                  onChangeExecutionEngine("pyodide");
-                  setRunError(null);
-                  setShowPyodideFallbackButton(false);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  executionEngine === "pyodide"
-                    ? "bg-[#086288] text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                Pyodide di Browser
-              </button>
-            </div>
-          </div>
-
           {isEvaluating && (
             <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col gap-2">
               <div className="flex items-center justify-between text-xs font-semibold text-[#086288]">
@@ -483,17 +418,6 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                 <strong className="block">Simulasi Tidak Dapat Dijalankan:</strong>
                 <span>{runError}</span>
               </div>
-              {(showPyodideFallbackButton || canOfferPyodideFallback) && (
-                <button
-                  type="button"
-                  disabled={isEvaluating}
-                  onClick={() => handleTriggerEvaluation("pyodide")}
-                  className="px-4 py-2.5 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs shrink-0 transition-colors cursor-pointer self-start sm:self-center inline-flex items-center gap-2"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Jalankan Simulasi dengan Pyodide di Browser</span>
-                </button>
-              )}
             </div>
           )}
 
@@ -530,16 +454,8 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     scenario,
     recommendedMethod,
     evaluatedMethods,
-    zoneOptimizationAudit,
     selectionRationale,
-    closeCompetitionNote,
-    scientificCaveats,
-    azboImplementationNotes,
   } = azboSummary;
-
-  const activeResultEngineLabel =
-    azboSummary.executionEngineLabel ||
-    getAzboExecutionEngineLabel(azboSummary.executionEngine ?? executionEngine);
 
   const slowestTimeS =
     evaluatedMethods[evaluatedMethods.length - 1]?.metrics.boarding_time_seconds ||
@@ -589,35 +505,12 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             <strong className="block">Gagal Memperbarui Simulasi:</strong>
             <span>{runError}</span>
           </div>
-          {(showPyodideFallbackButton || canOfferPyodideFallback) && (
-            <button
-              type="button"
-              disabled={isEvaluating}
-              onClick={() => handleTriggerEvaluation("pyodide")}
-              className="px-4 py-2 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs shrink-0 transition-colors cursor-pointer inline-flex items-center gap-2"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Jalankan Simulasi dengan Pyodide di Browser</span>
-            </button>
-          )}
         </div>
       )}
 
-      {/* 1. Ringkasan Kondisi Penerbangan yang Disimulasikan */}
+      {/* Ringkasan Kondisi Penerbangan yang Disimulasikan */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-              1. Ringkasan Kondisi Penerbangan
-            </span>
-            <span
-              data-testid="results-active-engine-label"
-              className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-[#086288] border border-sky-200 inline-flex items-center gap-1.5"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span>{activeResultEngineLabel}</span>
-            </span>
-          </div>
+        <div className="flex items-center justify-end pb-3 border-b border-slate-100">
           <button
             type="button"
             disabled={isEvaluating}
@@ -706,12 +599,6 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             <p className="text-xs sm:text-sm text-sky-100 leading-relaxed">
               {selectionRationale}
             </p>
-
-            {closeCompetitionNote && (
-              <div className="p-3 rounded-2xl bg-white/10 border border-white/20 text-xs text-[#FFEFC4] leading-relaxed">
-                {closeCompetitionNote}
-              </div>
-            )}
 
             {/* Urutan Boarding (Urutan Pemanggilan Penumpang untuk Petugas Operasional) */}
             {callingSteps.length > 0 && (
@@ -1206,7 +1093,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             </div>
 
             {/* Area Denah Kabin Adaptif (Mendukung 2-2, 2-3, dan 3-3) */}
-            <div className="overflow-x-auto pb-2">
+            <div className="zoneflow-dark-scrollbar overflow-x-auto pb-2">
               <div className="min-w-[680px] flex flex-col gap-2">
                 {/* Baris Kursi Sisi Kiri */}
                 <div className="flex flex-col gap-1">
@@ -1405,7 +1292,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                   {bestMethodSimulationData.details.length} penumpang
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              <div className="zoneflow-dark-scrollbar flex items-center gap-1.5 overflow-x-auto pb-2">
                 {bestMethodSimulationData.details.slice(0, 30).map((d) => {
                   const done = currentTimeS >= d.finish_time_s;
                   const active =
@@ -1481,241 +1368,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           </div>
         </div>
       )}
-
-      {/* Keterangan Ringkas Batasan Estimasi Simulasi & Informasi Model Opsional */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs flex flex-col gap-3">
-        <div className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 leading-relaxed">
-          <ShieldCheck className="w-4 h-4 text-[#086288] shrink-0 mt-0.5" />
-          <p>
-            {azboSummary.disclaimer ||
-              "Hasil merupakan perkiraan berdasarkan model simulasi dan belum menggantikan pengujian operasional di lapangan."}
-          </p>
-        </div>
-
-        <details className="text-xs text-slate-600 bg-slate-50/90 rounded-2xl border border-slate-200/80 px-4 py-3">
-          <summary className="font-semibold text-slate-700 cursor-pointer select-none flex items-center gap-1.5">
-            <Info className="w-3.5 h-3.5 text-[#086288] shrink-0" />
-            <span>Lihat Rincian Penelitian: Informasi Model, Statistik Simulasi, & Referensi Jurnal</span>
-          </summary>
-
-          <div className="mt-3 pt-3 border-t border-slate-200/80 flex flex-col gap-4 leading-relaxed">
-            {/* Ringkasan Audit Optimasi Zona AZBO */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3.5 rounded-xl bg-sky-50/70 border border-sky-200 flex flex-col justify-between gap-1.5">
-                <div>
-                  <span className="font-bold text-[#086288]">
-                    Konfigurasi Zona Terbaik ({zoneOptimizationAudit.kZones} Zona)
-                  </span>
-                  <div className="text-base font-bold text-slate-900 tabular-nums mt-0.5">
-                    {zoneOptimizationAudit.bestZoneConfig.boardingTimeSeconds.toFixed(1)} detik (
-                    {zoneOptimizationAudit.bestZoneConfig.boardingTimeMinutes.toFixed(2)} mnt)
-                  </div>
-                </div>
-                <div className="text-[11px] text-slate-700 space-y-0.5 pt-1.5 border-t border-sky-200/70">
-                  <div>
-                    Batas baris:{" "}
-                    {zoneOptimizationAudit.bestZoneConfig.boundaries.length > 0
-                      ? `Baris ${zoneOptimizationAudit.bestZoneConfig.boundaries.join(" & ")}`
-                      : "Seluruh baris dalam 1 zona"}
-                  </div>
-                  <div>
-                    Ukuran zona: {zoneOptimizationAudit.bestZoneConfig.sizes.join(", ")} baris •
-                    Urutan: Zona {zoneOptimizationAudit.bestZoneConfig.order.join(" → Zona ")}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between gap-1.5">
-                <div>
-                  <span className="font-bold text-slate-700">
-                    Aturan Dalam Zona & Replikasi Evaluasi
-                  </span>
-                  <div className="text-base font-bold text-slate-900 tabular-nums mt-0.5">
-                    {zoneOptimizationAudit.inZoneRule === "BTF_IN_ZONE"
-                      ? "Belakang ke Depan (BTF)"
-                      : "Jendela–Tengah–Lorong (WMA)"}
-                  </div>
-                </div>
-                <div className="text-[11px] text-slate-600 space-y-0.5 pt-1.5 border-t border-slate-100">
-                  <div>
-                    Replikasi optimasi: {scenario.trainReplications ?? 3} run •
-                    Evaluasi akhir: {scenario.testReplications ?? 20} run
-                  </div>
-                  <div>
-                    Invarian fisik lorong:{" "}
-                    <strong>
-                      Maks. 1 penumpang per sel (0,4 m) tanpa saling mendahului (FIFO)
-                    </strong>
-                  </div>
-                  <div>
-                    Kesetaraan urutan AZBO &amp; WMA:{" "}
-                    <strong>
-                      {zoneOptimizationAudit.azboWilmaEquivalenceVerified
-                        ? "Identik pada seluruh replikasi (K = 1 + WMA)"
-                        : "Berbeda (konfigurasi zona spesifik)"}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-col justify-between gap-1.5">
-                <div>
-                  <span className="font-bold text-emerald-900">
-                    Cakupan Kandidat Zona Diuji
-                  </span>
-                  <div className="text-base font-bold text-emerald-950 tabular-nums mt-0.5">
-                    {zoneOptimizationAudit.totalZoneCandidatesEvaluated} Evaluasi Kandidat
-                  </div>
-                </div>
-                <p className="text-[11px] text-emerald-900/90 pt-1.5 border-t border-emerald-200/70">
-                  Jumlah zona boarding (K), batas baris, urutan pemanggilan zona, dan aturan dalam
-                  zona ditentukan melalui pencarian optimasi heuristik tanpa batas K tetap.
-                </p>
-              </div>
-            </div>
-
-            {/* Tabel Statistik Ketidakpastian & Perbandingan Berpasangan (CRN) */}
-            <div className="space-y-2">
-              <div className="font-bold text-slate-900">
-                Rincian Statistik Replikasi Pengujian (Rerata, Simpangan Baku, CI 95%, & Selisih Berpasangan CRN):
-              </div>
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
-                <table className="w-full text-left border-collapse text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
-                      <th className="py-2 px-3">#</th>
-                      <th className="py-2 px-3">Metode</th>
-                      <th className="py-2 px-3 text-right">Rerata ± SD (dtk)</th>
-                      <th className="py-2 px-3 text-right">Rentang CI 95% (dtk)</th>
-                      <th className="py-2 px-3 text-right">Min–Maks (dtk)</th>
-                      <th className="py-2 px-3 text-right">CI 95% Selisih Berpasangan vs #1</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-mono">
-                    {evaluatedMethods.map((row) => (
-                      <tr key={`stat-${row.methodName}`}>
-                        <td className="py-2 px-3 font-bold">#{row.rank}</td>
-                        <td className="py-2 px-3 font-sans font-semibold text-slate-900">
-                          {row.shortLabel}
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          {row.metrics.boarding_time_seconds.toFixed(1)} ± {(row.sdSeconds ?? 0).toFixed(1)}
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          [{row.ci95Seconds?.[0].toFixed(1) ?? row.metrics.boarding_time_seconds.toFixed(1)},{" "}
-                          {row.ci95Seconds?.[1].toFixed(1) ?? row.metrics.boarding_time_seconds.toFixed(1)}]
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          {(row.minSeconds ?? row.metrics.boarding_time_seconds).toFixed(1)}–
-                          {(row.maxSeconds ?? row.metrics.boarding_time_seconds).toFixed(1)}
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          {row.rank === 1
-                            ? "Acuan #1 (0,0 dtk)"
-                            : `[${row.pairedDiffCi95Seconds?.[0].toFixed(1) ?? "0.0"}, +${row.pairedDiffCi95Seconds?.[1].toFixed(1) ?? "0.0"}] dtk`}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="font-bold text-slate-900">
-                  Mekanisme Evaluasi, Catatan Model, & Referensi Jurnal (2025):
-                </div>
-                <ul className="list-disc list-inside space-y-1 text-slate-600">
-                  {azboImplementationNotes.implementedInCode.map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                  {scientificCaveats.map((item, idx) => (
-                    <li key={`caveat-${idx}`}>{item}</li>
-                  ))}
-                  <li>
-                    <strong>Referensi Ilmiah 12 Metode Boarding (Varian/Adaptasi Model Seragam):</strong>{" "}
-                    Possamai Viertel, S., Pessini, L., Secomandi, L., Cavion, R., &amp; Hedler Staudt, F. (2025).{" "}
-                    <em>Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods.</em>{" "}
-                    (Reverse Pyramid, Rotating Zones, Modified Optimal, WMA, BTF, Random);{" "}
-                    Płanda, B., &amp; Skorupski, J. (2025).{" "}
-                    <em>Model for Evaluation of Aircraft Boarding Under Disturbances.</em>{" "}
-                    <em>Aerospace</em>, 12(5), 403.{" "}
-                    <a
-                      href="https://doi.org/10.3390/aerospace12050403"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline text-[#086288]"
-                    >
-                      https://doi.org/10.3390/aerospace12050403
-                    </a>{" "}
-                    (Front-to-Back Bagian 2.2.3, Reverse Pyramid Gambar 3, Rotating Zone, Steffen Gambar 4);{" "}
-                    Gehlen, M. A., &amp; Ronzani, G. M. R. (2025).{" "}
-                    <em>Setting Airport Boarding Strategies Based on Passengers’ Operational Data through Machine Learning Techniques.</em>{" "}
-                    <em>J. Aerosp. Technol. Manag.</em>, 17, e2125 (Steffen, Block/BTF, Random);{" "}
-                    Steffen, J. H., &amp; Hotchkiss, J. (2012).{" "}
-                    <em>Experimental test of airplane boarding methods.</em>{" "}
-                    <em>J. Air Transp. Manag.</em>, 18(1), 64–67 (Four-Row Blocks / Blok 4 Baris);{" "}
-                    Dong, Y., Jia, X., Yanagisawa, D., &amp; Nishinari, K. (2025).{" "}
-                    <em>Boarding strategies accounting for properties of the blended wing body aircraft.</em>{" "}
-                    <em>Physica A</em>, 658, 130298 (Model sel lorong 0,4 m, adaptasi Double Outside-In Bagian 3.2 Gambar 5 untuk kabin satu lorong, &amp; reduksi N-Steffen ke Steffen klasik pada lorong tunggal).
-                  </li>
-                </ul>
-                {azboSummary.animationReplication && (
-                  <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700">
-                    <span className="font-bold block text-slate-900">
-                      Sumber Lintasan Animasi (Satu Replikasi Testing Nyata):
-                    </span>
-                    Animasi menampilkan replikasi pengujian{" "}
-                    {azboSummary.animationReplication.replicationIndex !== undefined
-                      ? `#${azboSummary.animationReplication.replicationIndex} `
-                      : ""}
-                    (seed {azboSummary.animationReplication.replicationSeed}) dengan durasi{" "}
-                    {azboSummary.animationReplication.boardingTimeS.toFixed(1)} dtk yang paling
-                    mendekati rata-rata sampel metode terpilih (
-                    {(
-                      azboSummary.animationReplication.sampleMeanS ??
-                      recommendedMethod.metrics.boarding_time_seconds
-                    ).toFixed(1)}{" "}
-                    dtk), bukan penyamaan durasi animasi dengan rata-rata statistik.
-                  </div>
-                )}
-                {azboImplementationNotes.missingFormalSpecInSource[0] && (
-                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950">
-                    <span className="font-bold block">Catatan Cakupan Literatur BWB & Gangguan Operasional:</span>
-                    {azboImplementationNotes.missingFormalSpecInSource[0]}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="font-bold text-slate-900">
-                  Metode Literatur di Luar Cakupan Simulator Lorong Tunggal:
-                </div>
-                <div className="flex flex-col gap-2">
-                  {unsupportedMethods.map((m) => (
-                    <div
-                      key={m.id}
-                      className="p-3 rounded-xl bg-white border border-slate-200 flex flex-col gap-1"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-slate-900">{m.shortLabel}</span>
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[10px]">
-                          Di Luar Cakupan Lorong Tunggal
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-500">
-                        Sumber: {m.sourceCitation}
-                      </span>
-                      <p className="text-slate-600">{m.unsupportedReason}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
-      </div>
     </div>
   );
 };
+

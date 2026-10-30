@@ -1686,8 +1686,8 @@ export async function runAzboV2EvaluationViaPyodideBrowser(
 }
 
 /**
- * Menjalankan evaluasi dan optimasi AZBO V2 melalui backend Python FastAPI
- * (PythonAnywhere sebagai mesin utama: `https://rufluu1234.pythonanywhere.com/api/v2/azbo/*`).
+ * Menjalankan evaluasi dan optimasi AZBO V2 melalui backend Python FastAPI lokal
+ * (`/api/v2/azbo/*`) untuk pengujian penelitian.
  *
  * Langkah eksekusi:
  * 1. Memeriksa ketersediaan backend melalui `GET /api/v2/azbo/health`.
@@ -1927,21 +1927,15 @@ export async function runAzboV2EvaluationViaFastApiServer(
 }
 
 /**
- * Fungsi gerbang utama evaluasi AZBO V2 pada frontend ZoneFlow:
- * - Default (`engine = "pythonanywhere"`): Menjalankan simulasi melalui backend utama
- *   PythonAnywhere FastAPI (`runAzboV2EvaluationViaFastApiServer`).
- * - Alternatif eksplisit (`engine = "pyodide"`): Menjalankan kode `backend/app/azbo_core.py`
- *   yang sama persis di dalam browser melalui Pyodide + Web Worker (`runAzboV2EvaluationViaPyodideBrowser`).
- * - Tidak pernah diam-diam memindahkan pekerjaan dari PythonAnywhere ke Pyodide tanpa persetujuan pengguna.
+ * Fungsi utama evaluasi AZBO V2 pada frontend ZoneFlow:
+ * Menjalankan kode inti Python (`backend/app/azbo_core.py`) secara langsung
+ * di dalam browser menggunakan Pyodide 0.27.8 + Web Worker sebagai mesin tunggal,
+ * tanpa menghubungi server eksternal atau PythonAnywhere.
  */
 export async function runAzboV2EvaluationViaBackend(
   options: AzboEvaluationOptions
 ): Promise<AzboOptimizationSummary> {
-  const targetEngine: AzboExecutionEngine = options.engine ?? "pythonanywhere";
-  if (targetEngine === "pyodide") {
-    return runAzboV2EvaluationViaPyodideBrowser(options);
-  }
-  return runAzboV2EvaluationViaFastApiServer(options);
+  return runAzboV2EvaluationViaPyodideBrowser(options);
 }
 
 /**

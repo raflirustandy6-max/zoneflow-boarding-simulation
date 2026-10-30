@@ -13,8 +13,6 @@ import {
 } from "lucide-react";
 import {
   AircraftLayoutConfig,
-  AzboExecutionEngine,
-  getAzboExecutionEngineLabel,
   WEIBULL_SCALE_S,
   WEIBULL_SHAPE,
 } from "../simulation/engine";
@@ -29,14 +27,9 @@ interface SimulationViewProps {
   isEvaluating: boolean;
   evaluationProgressMessage: string;
   evaluationProgressPercent: number;
-  executionEngine: AzboExecutionEngine;
-  canOfferPyodideFallback: boolean;
-  onChangeExecutionEngine: (engine: AzboExecutionEngine) => void;
-  onRunSimulationAndAzbo: (overrideEngine?: AzboExecutionEngine) => Promise<{
+  onRunSimulationAndAzbo: () => Promise<{
     ok: boolean;
     error?: string;
-    canFallbackToPyodide?: boolean;
-    engineUsed?: AzboExecutionEngine;
   }>;
   onNavigateToResults: () => void;
   onBackToAircraftLayout: () => void;
@@ -51,16 +44,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
   isEvaluating,
   evaluationProgressMessage,
   evaluationProgressPercent,
-  executionEngine,
-  canOfferPyodideFallback,
-  onChangeExecutionEngine,
   onRunSimulationAndAzbo,
   onNavigateToResults,
   onBackToAircraftLayout,
 }) => {
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
-  const [showPyodideFallbackButton, setShowPyodideFallbackButton] =
-    useState<boolean>(false);
 
   const parsedBagPct =
     baggagePercentInput.trim() === "" ? NaN : Number(baggagePercentInput.trim());
@@ -80,10 +68,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
       ? Math.max(0, effectivePaxCount - effectiveBagCount)
       : null;
 
-  const handleExecuteEvaluation = async (overrideEngine?: AzboExecutionEngine) => {
+  const handleExecuteEvaluation = async () => {
     if (isEvaluating) return;
     setEvaluationError(null);
-    setShowPyodideFallbackButton(false);
 
     if (!isInputValid) {
       setEvaluationError(
@@ -94,13 +81,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
     }
 
     try {
-      const result = await onRunSimulationAndAzbo(overrideEngine);
+      const result = await onRunSimulationAndAzbo();
       if (!result.ok) {
         setEvaluationError(
           result.error ||
-            "Simulasi gagal dijalankan. Silakan periksa koneksi atau gunakan mesin alternatif."
+            "Simulasi gagal dijalankan. Silakan muat ulang halaman dan coba kembali."
         );
-        setShowPyodideFallbackButton(Boolean(result.canFallbackToPyodide));
         return;
       }
       onNavigateToResults();
@@ -430,66 +416,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
           </div>
         )}
 
-        {/* Panel Informasi & Pilihan Mesin Simulasi Python AZBO V2 */}
-        <div className="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <Cpu className="w-5 h-5 text-[#086288] shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <span
-                data-testid="active-simulation-engine-label"
-                className="font-bold block text-xs sm:text-sm text-slate-900"
-              >
-                {getAzboExecutionEngineLabel(executionEngine)}
-              </span>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                {executionEngine === "pythonanywhere"
-                  ? "Menjalankan model Python AZBO V2 melalui server online PythonAnywhere (mesin utama)."
-                  : "Menjalankan model Python AZBO V2 langsung di browser Anda melalui Pyodide Web Worker (mesin alternatif)."}
-              </p>
-            </div>
-          </div>
-
-          <div
-            role="group"
-            aria-label="Pilih Mesin Simulasi"
-            className="inline-flex items-center p-1 rounded-xl bg-white border border-slate-200/90 self-start sm:self-center shrink-0"
-          >
-            <button
-              type="button"
-              disabled={isEvaluating}
-              onClick={() => {
-                onChangeExecutionEngine("pythonanywhere");
-                setEvaluationError(null);
-                setShowPyodideFallbackButton(false);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                executionEngine === "pythonanywhere"
-                  ? "bg-[#086288] text-white"
-                  : "text-slate-600 hover:bg-slate-100"
-              } ${isEvaluating ? "opacity-60 cursor-not-allowed" : ""}`}
-            >
-              PythonAnywhere (Utama)
-            </button>
-            <button
-              type="button"
-              disabled={isEvaluating}
-              onClick={() => {
-                onChangeExecutionEngine("pyodide");
-                setEvaluationError(null);
-                setShowPyodideFallbackButton(false);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                executionEngine === "pyodide"
-                  ? "bg-[#086288] text-white"
-                  : "text-slate-600 hover:bg-slate-100"
-              } ${isEvaluating ? "opacity-60 cursor-not-allowed" : ""}`}
-            >
-              Pyodide di Browser
-            </button>
-          </div>
-        </div>
-
-        {/* Indikator Progres Nyata saat Backend Python Berjalan */}
+        {/* Indikator Progres Nyata saat Simulasi Python Berjalan */}
         {isEvaluating && (
           <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col gap-2">
             <div className="flex items-center justify-between text-xs font-semibold text-[#086288]">
@@ -515,7 +442,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
           </div>
         )}
 
-        {/* Pesan Error Eksekusi (Jika Backend Tidak Tersedia atau Gagal) */}
+        {/* Pesan Error Eksekusi */}
         {evaluationError && (
           <div
             role="alert"
@@ -528,18 +455,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
                 <span>{evaluationError}</span>
               </div>
             </div>
-
-            {(showPyodideFallbackButton || canOfferPyodideFallback) && (
-              <button
-                type="button"
-                disabled={!isInputValid || isEvaluating}
-                onClick={() => handleExecuteEvaluation("pyodide")}
-                className="px-4 py-2.5 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs shrink-0 transition-colors cursor-pointer self-start sm:self-center inline-flex items-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Jalankan Simulasi dengan Pyodide di Browser</span>
-              </button>
-            )}
           </div>
         )}
 

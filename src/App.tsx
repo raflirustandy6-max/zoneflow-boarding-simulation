@@ -13,12 +13,9 @@ import { AzboResultsView } from "./views/AzboResultsView";
 import {
   AIRCRAFT_LAYOUTS,
   AircraftLayoutConfig,
-  AzboExecutionEngine,
-  AzboServerEvaluationError,
   BASE_SEED,
   AzboOptimizationSummary,
   computeDeterministicBaggageCount,
-  getAzboExecutionEngineLabel,
   runAzboV2EvaluationViaBackend,
 } from "./simulation/engine";
 
@@ -52,16 +49,9 @@ export default function App() {
   // Seed deterministik internal untuk reproduksibilitas
   const seed = BASE_SEED;
 
-  // 4. Pilihan Mesin Eksekusi AZBO V2:
-  //    - "pythonanywhere": Mesin utama melalui backend FastAPI online
-  //    - "pyodide": Mesin alternatif langsung di browser (Web Worker)
-  const [executionEngine, setExecutionEngine] =
-    useState<AzboExecutionEngine>("pythonanywhere");
-  const [canOfferPyodideFallback, setCanOfferPyodideFallback] =
-    useState<boolean>(false);
   const isSubmittingRef = useRef<boolean>(false);
 
-  // 5. Hasil Evaluasi & Optimasi AZBO V2 dari Mesin Python
+  // 4. Hasil Evaluasi & Optimasi AZBO V2 dari Mesin Python
   const [azboSummary, setAzboSummary] =
     useState<AzboOptimizationSummary | null>(null);
   const [lastEvaluatedScenarioKey, setLastEvaluatedScenarioKey] =
@@ -136,120 +126,71 @@ export default function App() {
     setSelectedLayout(newLayout);
   };
 
-  const handleChangeExecutionEngine = useCallback(
-    (nextEngine: AzboExecutionEngine) => {
-      if (isSubmittingRef.current) return;
-      setExecutionEngine(nextEngine);
-      if (nextEngine === "pyodide") {
-        setCanOfferPyodideFallback(false);
-      }
-    },
-    []
-  );
+  const handleRunSimulationAndAzbo = useCallback(async (): Promise<{
+    ok: boolean;
+    error?: string;
+  }> => {
+    if (isSubmittingRef.current) {
+      return {
+        ok: false,
+        error: "Simulasi sedang berjalan. Mohon tunggu hingga proses saat ini selesai.",
+      };
+    }
 
-  const handleRunSimulationAndAzbo = useCallback(
-    async (
-      overrideEngine?: AzboExecutionEngine
-    ): Promise<{
-      ok: boolean;
-      error?: string;
-      canFallbackToPyodide?: boolean;
-      engineUsed?: AzboExecutionEngine;
-    }> => {
-      if (isSubmittingRef.current) {
-        return {
-          ok: false,
-          error: "Simulasi sedang berjalan. Mohon tunggu hingga proses saat ini selesai.",
-        };
-      }
+    if (baggageError) {
+      return {
+        ok: false,
+        error: baggageError,
+      };
+    }
 
-      if (baggageError) {
-        return {
-          ok: false,
-          error: baggageError,
-        };
-      }
+    const bagPct = Number(baggagePercentInput.trim());
+    if (!Number.isFinite(bagPct) || bagPct < 0 || bagPct > 100) {
+      return {
+        ok: false,
+        error:
+          "Persentase penumpang membawa bagasi harus berada pada rentang 0% hingga 100%.",
+      };
+    }
 
-      const bagPct = Number(baggagePercentInput.trim());
-      if (!Number.isFinite(bagPct) || bagPct < 0 || bagPct > 100) {
-        return {
-          ok: false,
-          error:
-            "Persentase penumpang membawa bagasi harus berada pada rentang 0% hingga 100%.",
-        };
-      }
+    isSubmittingRef.current = true;
+    setIsEvaluating(true);
+    setEvaluationProgressMessage("Menyiapkan mesin simulasi Python di browser...");
+    setEvaluationProgressPercent(4);
 
-      const targetEngine: AzboExecutionEngine =
-        overrideEngine ?? executionEngine;
-      if (overrideEngine && overrideEngine !== executionEngine) {
-        setExecutionEngine(overrideEngine);
-      }
-
-      isSubmittingRef.current = true;
-      setCanOfferPyodideFallback(false);
-      setIsEvaluating(true);
-      setEvaluationProgressMessage(
-        targetEngine === "pythonanywhere"
-          ? "Menghubungi server simulasi PythonAnywhere..."
-          : "Menyiapkan mesin simulasi Python di browser..."
-      );
-      setEvaluationProgressPercent(4);
-
-      try {
-        const summary = await runAzboV2EvaluationViaBackend({
-          layout: selectedLayout,
-          baggagePercent: bagPct,
-          seed,
-          engine: targetEngine,
-          onProgress: (msg, pct) => {
-            setEvaluationProgressMessage(msg);
-            setEvaluationProgressPercent(pct);
-          },
-        });
-        const enrichedSummary: AzboOptimizationSummary = {
-          ...summary,
-          executionEngine: summary.executionEngine ?? targetEngine,
-          executionEngineLabel:
-            summary.executionEngineLabel ??
-            getAzboExecutionEngineLabel(targetEngine),
-        };
-        setAzboSummary(enrichedSummary);
-        setLastEvaluatedScenarioKey(currentScenarioKey);
-        setCanOfferPyodideFallback(false);
-        setIsEvaluating(false);
-        isSubmittingRef.current = false;
-        return { ok: true, engineUsed: targetEngine };
-      } catch (err) {
-        setIsEvaluating(false);
-        isSubmittingRef.current = false;
-        const canFallback =
-          targetEngine === "pythonanywhere" &&
-          (err instanceof AzboServerEvaluationError
-            ? err.canFallbackToPyodide
-            : true);
-        setCanOfferPyodideFallback(canFallback);
-        return {
-          ok: false,
-          canFallbackToPyodide: canFallback,
-          engineUsed: targetEngine,
-          error:
-            err instanceof Error
-              ? err.message
-              : targetEngine === "pythonanywhere"
-              ? "Server simulasi sedang tidak tersedia. Anda dapat mencoba menjalankan simulasi langsung di perangkat ini."
-              : "Gagal menjalankan simulasi Python AZBO V2 di browser.",
-        };
-      }
-    },
-    [
-      baggageError,
-      baggagePercentInput,
-      selectedLayout,
-      seed,
-      currentScenarioKey,
-      executionEngine,
-    ]
-  );
+    try {
+      const summary = await runAzboV2EvaluationViaBackend({
+        layout: selectedLayout,
+        baggagePercent: bagPct,
+        seed,
+        onProgress: (msg, pct) => {
+          setEvaluationProgressMessage(msg);
+          setEvaluationProgressPercent(pct);
+        },
+      });
+      setAzboSummary(summary);
+      setLastEvaluatedScenarioKey(currentScenarioKey);
+      setIsEvaluating(false);
+      isSubmittingRef.current = false;
+      return { ok: true };
+    } catch (err) {
+      setIsEvaluating(false);
+      isSubmittingRef.current = false;
+      return {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Gagal menjalankan simulasi Python AZBO V2 di browser.",
+      };
+    }
+  }, [
+    baggageError,
+    baggagePercentInput,
+    selectedLayout,
+    seed,
+    currentScenarioKey,
+  ]);
 
   // Tampilkan Halaman Login / Akses Demo terlebih dahulu jika belum masuk sesi demo
   if (!demoSession) {
@@ -304,9 +245,6 @@ export default function App() {
             isEvaluating={isEvaluating}
             evaluationProgressMessage={evaluationProgressMessage}
             evaluationProgressPercent={evaluationProgressPercent}
-            executionEngine={executionEngine}
-            canOfferPyodideFallback={canOfferPyodideFallback}
-            onChangeExecutionEngine={handleChangeExecutionEngine}
             onRunSimulationAndAzbo={handleRunSimulationAndAzbo}
             onNavigateToResults={() => {
               setActiveTab("results");
@@ -332,9 +270,6 @@ export default function App() {
             isEvaluating={isEvaluating}
             evaluationProgressMessage={evaluationProgressMessage}
             evaluationProgressPercent={evaluationProgressPercent}
-            executionEngine={executionEngine}
-            canOfferPyodideFallback={canOfferPyodideFallback}
-            onChangeExecutionEngine={handleChangeExecutionEngine}
             onRunAzboEvaluation={handleRunSimulationAndAzbo}
             onGoToAircraftLayout={() => {
               setActiveTab("aircraft");

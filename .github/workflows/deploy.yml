@@ -60,9 +60,6 @@ jobs:
         run: npx tsx --test src/simulation/azboV2.test.ts src/simulation/engine.test.ts src/simulation/pyodideEquivalence.test.ts
 
       - name: Build frontend for GitHub Pages
-        env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://rufluu1234.pythonanywhere.com/api/v1' }}
-          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL || '' }}
         run: npm run build
 
       - name: Upload artifact

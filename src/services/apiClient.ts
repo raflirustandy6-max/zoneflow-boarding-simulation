@@ -54,8 +54,7 @@ export interface PythonSimulationRequest {
   };
 }
 
-export const DEFAULT_PYTHONANYWHERE_API_BASE_URL =
-  "https://rufluu1234.pythonanywhere.com/api/v1";
+export const DEFAULT_LOCAL_API_BASE_URL = "/api/v1";
 
 export interface AzboV2HealthInfo {
   status: "online" | "offline";
@@ -65,10 +64,10 @@ export interface AzboV2HealthInfo {
 }
 
 export function normalizeApiBaseUrl(rawUrl?: string): string {
-  const cleaned = (rawUrl || DEFAULT_PYTHONANYWHERE_API_BASE_URL)
+  const cleaned = (rawUrl || DEFAULT_LOCAL_API_BASE_URL)
     .trim()
     .replace(/\/+$/, "");
-  return cleaned || DEFAULT_PYTHONANYWHERE_API_BASE_URL;
+  return cleaned || DEFAULT_LOCAL_API_BASE_URL;
 }
 
 export const resolveApiV1BaseUrl = normalizeApiBaseUrl;
@@ -80,8 +79,8 @@ export function resolveAzboV2BaseUrl(rawUrl?: string): string {
       : typeof import.meta !== "undefined" && import.meta.env
       ? import.meta.env.VITE_BACKEND_URL ||
         import.meta.env.VITE_API_BASE_URL ||
-        DEFAULT_PYTHONANYWHERE_API_BASE_URL
-      : DEFAULT_PYTHONANYWHERE_API_BASE_URL;
+        DEFAULT_LOCAL_API_BASE_URL
+      : DEFAULT_LOCAL_API_BASE_URL;
 
   const cleaned = (envUrl || "").trim().replace(/\/+$/, "");
   if (!cleaned || cleaned === "/api/v1" || cleaned === "/api/v2" || cleaned === "/api") {

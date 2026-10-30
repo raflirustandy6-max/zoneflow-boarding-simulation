@@ -61,3 +61,30 @@
 .zoneflow-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #4D8DBA;
 }
+
+/* Scrollbar horizontal tipis bertema biru gelap / navy untuk antrean penumpang & denah kabin */
+.zoneflow-dark-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #2B6CB0 #0B1528;
+}
+
+.zoneflow-dark-scrollbar::-webkit-scrollbar {
+  height: 7px;
+}
+
+.zoneflow-dark-scrollbar::-webkit-scrollbar-track {
+  background: #0B1528;
+  border-radius: 9999px;
+}
+
+.zoneflow-dark-scrollbar::-webkit-scrollbar-thumb {
+  background: #2B6CB0;
+  border-radius: 9999px;
+  border: 1px solid #0B1528;
+  transition: background-color 0.2s ease;
+}
+
+.zoneflow-dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #4D8DBA;
+}
+
