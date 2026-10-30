@@ -21,8 +21,10 @@ import {
 } from "lucide-react";
 import {
   AircraftLayoutConfig,
+  AzboExecutionEngine,
   AzboOptimizationSummary,
   BOARDING_METHOD_CATALOG,
+  getAzboExecutionEngineLabel,
   zoneOfRow,
   PassengerTimelineDetail,
 } from "../simulation/engine";
@@ -39,7 +41,15 @@ interface AzboResultsViewProps {
   isEvaluating: boolean;
   evaluationProgressMessage: string;
   evaluationProgressPercent: number;
-  onRunAzboEvaluation: () => Promise<{ ok: boolean; error?: string }>;
+  executionEngine: AzboExecutionEngine;
+  canOfferPyodideFallback: boolean;
+  onChangeExecutionEngine: (engine: AzboExecutionEngine) => void;
+  onRunAzboEvaluation: (overrideEngine?: AzboExecutionEngine) => Promise<{
+    ok: boolean;
+    error?: string;
+    canFallbackToPyodide?: boolean;
+    engineUsed?: AzboExecutionEngine;
+  }>;
   onGoToAircraftLayout: () => void;
 }
 
@@ -55,11 +65,16 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
   isEvaluating,
   evaluationProgressMessage,
   evaluationProgressPercent,
+  executionEngine,
+  canOfferPyodideFallback,
+  onChangeExecutionEngine,
   onRunAzboEvaluation,
   onGoToAircraftLayout,
 }) => {
   const animationSectionRef = useRef<HTMLDivElement | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [showPyodideFallbackButton, setShowPyodideFallbackButton] =
+    useState<boolean>(false);
 
   // State Animasi Metode Terbaik pada Halaman Hasil Akhir
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -314,14 +329,17 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     }
   };
 
-  const handleTriggerEvaluation = async () => {
+  const handleTriggerEvaluation = async (overrideEngine?: AzboExecutionEngine) => {
+    if (isEvaluating) return;
     setRunError(null);
-    const res = await onRunAzboEvaluation();
+    setShowPyodideFallbackButton(false);
+    const res = await onRunAzboEvaluation(overrideEngine);
     if (!res.ok) {
       setRunError(
         res.error ||
           "Gagal menjalankan simulasi. Pastikan server simulasi Python aktif."
       );
+      setShowPyodideFallbackButton(Boolean(res.canFallbackToPyodide));
     }
   };
 
@@ -389,6 +407,49 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             </div>
           </div>
 
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 font-bold text-slate-800">
+              <Cpu className="w-4 h-4 text-[#086288] shrink-0" />
+              <span data-testid="results-active-engine-label">
+                {getAzboExecutionEngineLabel(executionEngine)}
+              </span>
+            </div>
+            <div className="inline-flex items-center p-1 rounded-xl bg-white border border-slate-200/90 self-start sm:self-center">
+              <button
+                type="button"
+                disabled={isEvaluating}
+                onClick={() => {
+                  onChangeExecutionEngine("pythonanywhere");
+                  setRunError(null);
+                  setShowPyodideFallbackButton(false);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  executionEngine === "pythonanywhere"
+                    ? "bg-[#086288] text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                PythonAnywhere (Utama)
+              </button>
+              <button
+                type="button"
+                disabled={isEvaluating}
+                onClick={() => {
+                  onChangeExecutionEngine("pyodide");
+                  setRunError(null);
+                  setShowPyodideFallbackButton(false);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  executionEngine === "pyodide"
+                    ? "bg-[#086288] text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Pyodide di Browser
+              </button>
+            </div>
+          </div>
+
           {isEvaluating && (
             <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col gap-2">
               <div className="flex items-center justify-between text-xs font-semibold text-[#086288]">
@@ -416,10 +477,23 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           {runError && (
             <div
               role="alert"
-              className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-950"
+              className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
-              <strong className="block">Simulasi Tidak Dapat Dijalankan:</strong>
-              <span>{runError}</span>
+              <div>
+                <strong className="block">Simulasi Tidak Dapat Dijalankan:</strong>
+                <span>{runError}</span>
+              </div>
+              {(showPyodideFallbackButton || canOfferPyodideFallback) && (
+                <button
+                  type="button"
+                  disabled={isEvaluating}
+                  onClick={() => handleTriggerEvaluation("pyodide")}
+                  className="px-4 py-2.5 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs shrink-0 transition-colors cursor-pointer self-start sm:self-center inline-flex items-center gap-2"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Jalankan Simulasi dengan Pyodide di Browser</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -427,7 +501,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
             <button
               type="button"
               disabled={isEvaluating}
-              onClick={handleTriggerEvaluation}
+              onClick={() => handleTriggerEvaluation()}
               className={`px-5 py-3 rounded-xl font-bold text-xs shadow-md transition-all inline-flex items-center gap-2 ${
                 isEvaluating
                   ? "bg-slate-200 text-slate-500 cursor-not-allowed"
@@ -463,6 +537,10 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
     azboImplementationNotes,
   } = azboSummary;
 
+  const activeResultEngineLabel =
+    azboSummary.executionEngineLabel ||
+    getAzboExecutionEngineLabel(azboSummary.executionEngine ?? executionEngine);
+
   const slowestTimeS =
     evaluatedMethods[evaluatedMethods.length - 1]?.metrics.boarding_time_seconds ||
     recommendedMethod.metrics.boarding_time_seconds;
@@ -494,7 +572,7 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
           <button
             type="button"
             disabled={isEvaluating}
-            onClick={handleTriggerEvaluation}
+            onClick={() => handleTriggerEvaluation()}
             className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs shrink-0 transition-colors cursor-pointer"
           >
             {isEvaluating ? "Memperbarui..." : "Perbarui Simulasi"}
@@ -505,25 +583,45 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
       {runError && (
         <div
           role="alert"
-          className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-950"
+          className="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
         >
-          <strong className="block">Gagal Memperbarui Simulasi:</strong>
-          <span>{runError}</span>
+          <div>
+            <strong className="block">Gagal Memperbarui Simulasi:</strong>
+            <span>{runError}</span>
+          </div>
+          {(showPyodideFallbackButton || canOfferPyodideFallback) && (
+            <button
+              type="button"
+              disabled={isEvaluating}
+              onClick={() => handleTriggerEvaluation("pyodide")}
+              className="px-4 py-2 rounded-xl bg-[#086288] hover:bg-[#064e6d] text-white font-bold text-xs shrink-0 transition-colors cursor-pointer inline-flex items-center gap-2"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Jalankan Simulasi dengan Pyodide di Browser</span>
+            </button>
+          )}
         </div>
       )}
 
       {/* 1. Ringkasan Kondisi Penerbangan yang Disimulasikan */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
               1. Ringkasan Kondisi Penerbangan
+            </span>
+            <span
+              data-testid="results-active-engine-label"
+              className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-[#086288] border border-sky-200 inline-flex items-center gap-1.5"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span>{activeResultEngineLabel}</span>
             </span>
           </div>
           <button
             type="button"
             disabled={isEvaluating}
-            onClick={handleTriggerEvaluation}
+            onClick={() => handleTriggerEvaluation()}
             className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
           >
             {isEvaluating ? "Menjalankan..." : "Jalankan Ulang Simulasi"}
@@ -1444,11 +1542,17 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                     Evaluasi akhir: {scenario.testReplications ?? 20} run
                   </div>
                   <div>
-                    Status verifikasi antrean:{" "}
+                    Invarian fisik lorong:{" "}
                     <strong>
-                      {zoneOptimizationAudit.azboWilmaEquivalenceVerified !== false
-                        ? "Lulus (Tanpa tumpang tindih sel lorong)"
-                        : "Lulus (1 penumpang per sel lorong)"}
+                      Maks. 1 penumpang per sel (0,4 m) tanpa saling mendahului (FIFO)
+                    </strong>
+                  </div>
+                  <div>
+                    Kesetaraan urutan AZBO &amp; WMA:{" "}
+                    <strong>
+                      {zoneOptimizationAudit.azboWilmaEquivalenceVerified
+                        ? "Identik pada seluruh replikasi (K = 1 + WMA)"
+                        : "Berbeda (konfigurasi zona spesifik)"}
                     </strong>
                   </div>
                 </div>
@@ -1531,21 +1635,30 @@ export const AzboResultsView: React.FC<AzboResultsViewProps> = ({
                   ))}
                   <li>
                     <strong>Referensi Ilmiah 12 Metode Boarding (Varian/Adaptasi Model Seragam):</strong>{" "}
-                    Possamai Viertel, B., Müller, C., &amp; Oliveira, A. V. M. (2025,{" "}
-                    <em>Airplane Boarding Strategies: A Classification and Comparative Analysis of Methods</em>,{" "}
-                    <em>XXII SITRAER</em> — Reverse Pyramid, Rotating Zones, Modified Optimal, WMA, BTF, Random);{" "}
-                    Płanda, P., &amp; Skorupski, J. (2025,{" "}
-                    <em>Model for Evaluation of Aircraft Boarding Under Disturbances</em>,{" "}
-                    <em>Aerospace</em>, 12(5), 403 — Front-to-Back Bagian 2.2.3, Reverse Pyramid Gambar 3, Rotating Zone, Steffen Gambar 4);{" "}
-                    Gehlen, M. A., &amp; Ronzani, G. M. R. (2025,{" "}
-                    <em>Setting Airport Boarding Strategies Based on Passengers’ Operational Data through Machine Learning Techniques</em>,{" "}
-                    <em>J. Aerosp. Technol. Manag.</em>, 17, e2125 — Steffen, Block/BTF, Random);{" "}
-                    Steffen, J. H., &amp; Hotchkiss, J. (2012,{" "}
-                    <em>Experimental test of airplane boarding methods</em>,{" "}
-                    <em>J. Air Transp. Manag.</em>, 18(1), 64–67 — Four-Row Blocks / Blok 4 Baris);{" "}
-                    Dong, Y., Jia, X., Yanagisawa, D., &amp; Nishinari, K. (2025,{" "}
-                    <em>Boarding strategies accounting for properties of the blended wing body aircraft</em>,{" "}
-                    <em>Physica A</em>, 658, 130298 — Model sel lorong 0,4 m, adaptasi Double Outside-In Bagian 3.2 Gambar 5 untuk kabin satu lorong, &amp; reduksi N-Steffen ke Steffen klasik pada lorong tunggal).
+                    Possamai Viertel, S., Pessini, L., Secomandi, L., Cavion, R., &amp; Hedler Staudt, F. (2025).{" "}
+                    <em>Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods.</em>{" "}
+                    (Reverse Pyramid, Rotating Zones, Modified Optimal, WMA, BTF, Random);{" "}
+                    Płanda, B., &amp; Skorupski, J. (2025).{" "}
+                    <em>Model for Evaluation of Aircraft Boarding Under Disturbances.</em>{" "}
+                    <em>Aerospace</em>, 12(5), 403.{" "}
+                    <a
+                      href="https://doi.org/10.3390/aerospace12050403"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline text-[#086288]"
+                    >
+                      https://doi.org/10.3390/aerospace12050403
+                    </a>{" "}
+                    (Front-to-Back Bagian 2.2.3, Reverse Pyramid Gambar 3, Rotating Zone, Steffen Gambar 4);{" "}
+                    Gehlen, M. A., &amp; Ronzani, G. M. R. (2025).{" "}
+                    <em>Setting Airport Boarding Strategies Based on Passengers’ Operational Data through Machine Learning Techniques.</em>{" "}
+                    <em>J. Aerosp. Technol. Manag.</em>, 17, e2125 (Steffen, Block/BTF, Random);{" "}
+                    Steffen, J. H., &amp; Hotchkiss, J. (2012).{" "}
+                    <em>Experimental test of airplane boarding methods.</em>{" "}
+                    <em>J. Air Transp. Manag.</em>, 18(1), 64–67 (Four-Row Blocks / Blok 4 Baris);{" "}
+                    Dong, Y., Jia, X., Yanagisawa, D., &amp; Nishinari, K. (2025).{" "}
+                    <em>Boarding strategies accounting for properties of the blended wing body aircraft.</em>{" "}
+                    <em>Physica A</em>, 658, 130298 (Model sel lorong 0,4 m, adaptasi Double Outside-In Bagian 3.2 Gambar 5 untuk kabin satu lorong, &amp; reduksi N-Steffen ke Steffen klasik pada lorong tunggal).
                   </li>
                 </ul>
                 {azboSummary.animationReplication && (

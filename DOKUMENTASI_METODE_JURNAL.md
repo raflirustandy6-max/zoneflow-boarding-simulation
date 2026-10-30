@@ -66,8 +66,8 @@ Seluruh 12 metode berikut diimplementasikan dalam fungsi `build_boarding_sequenc
 ### 2.2. Metode 5: `REVERSE_PYRAMID` (Piramida Terbalik)
 
 - **Referensi Jurnal:**
-  - Płanda & Skorupski (2025), *Model for Evaluation of Aircraft Boarding Under Disturbances*, *Aerospace* 12, 403 — Bagian 2.2.7 & **Gambar 3** (hal. 6).
-  - Possamai Viertel et al. (2025), *XXII SITRAER* — Bagian 2 & **Gambar 2(d)** (hal. 2).
+  - Płanda, B., & Skorupski, J. (2025). *Model for Evaluation of Aircraft Boarding Under Disturbances*. *Aerospace*, 12(5), 403. https://doi.org/10.3390/aerospace12050403 — Bagian 2.2.7 & **Gambar 3** (hal. 6).
+  - Possamai Viertel, S., Pessini, L., Secomandi, L., Cavion, R., & Hedler Staudt, F. (2025). *Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods* — Bagian 2 & **Gambar 2(d)** (hal. 2).
 - **Aturan Urutan Boarding:**
   1. Baris kabin $1 \dots N$ dibagi menjadi $B = \min(3, N)$ segmen longitudinal seimbang yang diindeks dari **belakang ke depan**:
      - $b = 0$: Segmen Belakang (misal Baris 21–30 untuk $N = 30$; Baris 18–25 untuk $N = 25$; Baris 13–18 untuk $N = 18$).
@@ -116,8 +116,8 @@ Seluruh 12 metode berikut diimplementasikan dalam fungsi `build_boarding_sequenc
 ### 2.4. Metode 7: `ROTATING_ZONES` (Zona Berputar)
 
 - **Referensi Jurnal:**
-  - Possamai Viertel et al. (2025), *XXII SITRAER* — Bagian 2 & **Gambar 2(e)** (hal. 2).
-  - Płanda & Skorupski (2025), *Model for Evaluation of Aircraft Boarding Under Disturbances*, *Aerospace* 12, 403 — Bagian 2.2.8 (*Rotating Zone*, hal. 6).
+  - Possamai Viertel, S., Pessini, L., Secomandi, L., Cavion, R., & Hedler Staudt, F. (2025). *Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods* — Bagian 2 & **Gambar 2(e)** (hal. 2).
+  - Płanda, B., & Skorupski, J. (2025). *Model for Evaluation of Aircraft Boarding Under Disturbances*. *Aerospace*, 12(5), 403. https://doi.org/10.3390/aerospace12050403 — Bagian 2.2.8 (*Rotating Zone*, hal. 6).
 - **Aturan Urutan Boarding:**
   1. Baris kabin $1 \dots N$ dibagi menjadi $K_{\text{rot}} = \min(5, N)$ zona baris kontigu berukuran seimbang (`equal_rotating_zone_ranges(n_rows, max_zones=5)`), diberi nomor $Z_1$ (paling depan) hingga $Z_{K_{\text{rot}}}$ (paling belakang).
   2. Urutan pemanggilan zona dimulai dari zona paling belakang, lalu zona paling depan, kemudian bergerak bergantian menuju bagian tengah kabin (`rotating_zone_calling_order`):
@@ -130,7 +130,7 @@ Seluruh 12 metode berikut diimplementasikan dalam fungsi `build_boarding_sequenc
 ### 2.5. Metode 8: `MODIFIED_OPTIMAL` (Optimal Termodifikasi)
 
 - **Referensi Jurnal:**
-  - Possamai Viertel et al. (2025), *XXII SITRAER* — Bagian 2 & **Gambar 2(f)** (hal. 2).
+  - Possamai Viertel, S., Pessini, L., Secomandi, L., Cavion, R., & Hedler Staudt, F. (2025). *Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods* — Bagian 2 & **Gambar 2(f)** (hal. 2).
 - **Aturan Urutan Boarding:**
   1. Penumpang dibagi menjadi 4 kelompok berdasarkan paritas nomor baris dan sisi kabin terhadap lorong:
      - **Kelompok 1:** Nomor baris genap ($r \bmod 2 = 0$), sisi kiri kabin (`side == "left"`).

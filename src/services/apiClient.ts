@@ -54,18 +54,34 @@ export interface PythonSimulationRequest {
   };
 }
 
-export function normalizeApiBaseUrl(rawUrl?: string): string {
-  const cleaned = (rawUrl || "/api/v1").trim().replace(/\/+$/, "");
-  return cleaned || "/api/v1";
+export const DEFAULT_PYTHONANYWHERE_API_BASE_URL =
+  "https://rufluu1234.pythonanywhere.com/api/v1";
+
+export interface AzboV2HealthInfo {
+  status: "online" | "offline";
+  engine: string;
+  version: string;
+  supported_strategies: string[];
 }
+
+export function normalizeApiBaseUrl(rawUrl?: string): string {
+  const cleaned = (rawUrl || DEFAULT_PYTHONANYWHERE_API_BASE_URL)
+    .trim()
+    .replace(/\/+$/, "");
+  return cleaned || DEFAULT_PYTHONANYWHERE_API_BASE_URL;
+}
+
+export const resolveApiV1BaseUrl = normalizeApiBaseUrl;
 
 export function resolveAzboV2BaseUrl(rawUrl?: string): string {
   const envUrl =
     rawUrl !== undefined
       ? rawUrl
       : typeof import.meta !== "undefined" && import.meta.env
-      ? import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL
-      : undefined;
+      ? import.meta.env.VITE_BACKEND_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        DEFAULT_PYTHONANYWHERE_API_BASE_URL
+      : DEFAULT_PYTHONANYWHERE_API_BASE_URL;
 
   const cleaned = (envUrl || "").trim().replace(/\/+$/, "");
   if (!cleaned || cleaned === "/api/v1" || cleaned === "/api/v2" || cleaned === "/api") {
@@ -89,7 +105,7 @@ export function buildAzboV2EndpointUrl(subpath: string, rawUrl?: string): string
 
 const API_BASE_URL = normalizeApiBaseUrl(
   typeof import.meta !== "undefined" && import.meta.env
-    ? import.meta.env.VITE_API_BASE_URL
+    ? import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL
     : undefined
 );
 
@@ -100,6 +116,142 @@ export function getConfiguredApiBaseUrl(): string {
 export function isJsonContentType(contentType?: string | null): boolean {
   if (!contentType) return false;
   return contentType.toLowerCase().includes("application/json");
+}
+
+/**
+ * Memeriksa ketersediaan layanan utama AZBO V2 (`/api/v2/azbo/health`)
+ */
+export async function checkAzboV2Health(
+  rawUrl?: string,
+  timeoutMs: number = 8000,
+  externalSignal?: AbortSignal
+): Promise<{
+  online: boolean;
+  ok: boolean;
+  status: number;
+  strategies: string[];
+  info: AzboV2HealthInfo | null;
+  endpointUrl: string;
+  error?: string;
+}> {
+  const endpointUrl = buildAzboV2EndpointUrl("/health", rawUrl);
+  const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      return {
+        online: false,
+        ok: false,
+        status: 0,
+        strategies: [],
+        info: null,
+        endpointUrl,
+        error: "Pemeriksaan koneksi server dibatalkan.",
+      };
+    }
+    externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+  }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(endpointUrl, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      return {
+        online: false,
+        ok: false,
+        status: res.status,
+        strategies: [],
+        info: null,
+        endpointUrl,
+        error: `HTTP ${res.status}: ${res.statusText || "Server tidak merespons OK"}`,
+      };
+    }
+
+    const contentType = res.headers.get("content-type");
+    if (!isJsonContentType(contentType)) {
+      return {
+        online: false,
+        ok: false,
+        status: res.status,
+        strategies: [],
+        info: null,
+        endpointUrl,
+        error:
+          "Endpoint /api/v2/azbo/health mengembalikan HTML statis, bukan respons JSON API.",
+      };
+    }
+
+    const data = (await res.json()) as {
+      status?: string;
+      engine?: string;
+      version?: string;
+      supported_strategies?: string[];
+      strategies?: string[];
+    };
+    const strategiesList = Array.isArray(data?.supported_strategies)
+      ? data.supported_strategies
+      : Array.isArray(data?.strategies)
+      ? data.strategies
+      : [];
+    const isValid =
+      Boolean(data) &&
+      (data.status === "online" || data.status === "ok") &&
+      typeof data.engine === "string" &&
+      strategiesList.length > 0;
+
+    if (!isValid) {
+      return {
+        online: false,
+        ok: false,
+        status: res.status,
+        strategies: [],
+        info: null,
+        endpointUrl,
+        error: "Respons /api/v2/azbo/health tidak sesuai kontrak AZBO V2.",
+      };
+    }
+
+    const normalizedInfo: AzboV2HealthInfo = {
+      status: "online",
+      engine: String(data.engine || ""),
+      version: data.version || "2.0.0",
+      supported_strategies: strategiesList,
+    };
+
+    return {
+      online: true,
+      ok: true,
+      status: res.status,
+      strategies: strategiesList,
+      info: normalizedInfo,
+      endpointUrl,
+    };
+  } catch (err: any) {
+    clearTimeout(timer);
+    const message =
+      err?.name === "AbortError"
+        ? "Waktu tunggu koneksi ke server simulasi habis (timeout)."
+        : err?.message || "Gagal menghubungi server simulasi PythonAnywhere.";
+    return {
+      online: false,
+      ok: false,
+      status: 0,
+      strategies: [],
+      info: null,
+      endpointUrl,
+      error: message,
+    };
+  } finally {
+    if (externalSignal) {
+      externalSignal.removeEventListener("abort", onExternalAbort);
+    }
+  }
 }
 
 async function parseVerifiedJson<T>(res: Response, endpointDesc: string): Promise<T> {
@@ -746,37 +898,6 @@ export interface AzboOptimizeV2Response {
   recommendation: Record<string, any>;
   animation: Record<string, any>;
 }
-
-export async function checkAzboV2Health(timeoutMs: number = 3000): Promise<{
-  online: boolean;
-  error?: string;
-}> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(buildAzboV2EndpointUrl("/health"), {
-      method: "GET",
-      signal: controller.signal,
-      headers: { Accept: "application/json" },
-    });
-    clearTimeout(timer);
-    if (!res.ok) {
-      return { online: false, error: `HTTP ${res.status}` };
-    }
-    if (!isJsonContentType(res.headers.get("content-type"))) {
-      return {
-        online: false,
-        error: "Host statis tidak menjalankan layanan backend Python FastAPI.",
-      };
-    }
-    const data = await res.json();
-    return { online: data?.status === "online" };
-  } catch (err: any) {
-    clearTimeout(timer);
-    return { online: false, error: err?.message || "Gagal menghubungi backend AZBO V2." };
-  }
-}
-
 export async function optimizeAzboV2(
   payload: AzboOptimizeV2Payload,
   timeoutMs: number = 60000

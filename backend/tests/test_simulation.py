@@ -47,8 +47,12 @@ from app.simulation_core import (
     compute_mc_summary, compute_paired_difference_summary,
     run_azbo_optimization
 )
-from fastapi.testclient import TestClient
-from app.main import app
+try:
+    from fastapi.testclient import TestClient
+    from app.main import app
+except ImportError:
+    TestClient = None
+    app = None
 
 
 class TestP0ACellularBlockingFlow(unittest.TestCase):
@@ -316,6 +320,7 @@ class TestP0CVariableKGeneticAlgorithmAndMonteCarlo(unittest.TestCase):
             self.assertEqual(len(pd_info["paired_deltas_s"]), 6)
 
 
+@unittest.skipIf(TestClient is None, "FastAPI TestClient not installed in bare stdlib Python environment")
 class TestApiEndpoints(unittest.TestCase):
 
     def setUp(self):

@@ -4,7 +4,12 @@
  * Memastikan independensi logika, determinisme dengan PRNG seed, dan dukungan animasi UI kabin.
  */
 
-import { buildAzboV2EndpointUrl, isJsonContentType } from "../services/apiClient";
+import {
+  buildAzboV2EndpointUrl,
+  checkAzboV2Health,
+  isJsonContentType,
+} from "../services/apiClient";
+import { runAzboV2InBrowserPyodide } from "./pyodideClient";
 
 export interface SeatInfo {
   seat_id: string;
@@ -1015,7 +1020,8 @@ export const BOARDING_METHOD_CATALOG: BoardingMethodSpec[] = [
     name: "Front-to-Back",
     shortLabel: "Depan ke Belakang (Front-to-Back)",
     category: "Berdasarkan Baris (Depan ke Belakang)",
-    sourceCitation: "Płanda & Skorupski (2025), Aerospace 12, 403 — Bagian 2.2.3",
+    sourceCitation:
+      "Płanda, B., & Skorupski, J. (2025). Model for Evaluation of Aircraft Boarding Under Disturbances. Aerospace, 12(5), 403. https://doi.org/10.3390/aerospace12050403 — Bagian 2.2.3",
     sequenceRule:
       "Penumpang baris paling depan (Baris 1) masuk lebih dahulu secara berurutan menuju baris paling belakang (Baris N).",
     requiredParameters: "Nomor baris kursi dan angka awal pengacakan (seed).",
@@ -1054,7 +1060,8 @@ export const BOARDING_METHOD_CATALOG: BoardingMethodSpec[] = [
     name: "Back-to-Front + WMA (3 Zona Tetap)",
     shortLabel: "Back-to-Front + WMA (3 Zona Tetap)",
     category: "Hibrida Zona Tetap & Posisi Kursi",
-    sourceCitation: "Possamai Viertel et al. (2025); Baseline Hibrida 3 Zona Tetap ZoneFlow",
+    sourceCitation:
+      "Possamai Viertel, S., Pessini, L., Secomandi, L., Cavion, R., & Hedler Staudt, F. (2025). Boarding Efficiency in Regional Aviation: A Comparative Analysis of Methods; Baseline Hibrida 3 Zona Tetap ZoneFlow",
     sequenceRule:
       "Kabin dibagi menjadi 3 zona tetap seimbang yang dipanggil dari Zona Belakang → Zona Tengah → Zona Depan; di dalam setiap zona penumpang dipanggil Jendela → Tengah → Lorong.",
     requiredParameters: "Pembagian 3 zona baris seimbang dan prioritas kelas kursi (Window/Middle/Aisle).",
@@ -1209,7 +1216,44 @@ export interface EvaluatedMethodResult {
   differenceFromBestPercent: number;
 }
 
+export type AzboExecutionEngine = "pythonanywhere" | "pyodide";
+
+export const AZBO_EXECUTION_ENGINE_LABELS: Record<AzboExecutionEngine, string> = {
+  pythonanywhere: "Mesin Simulasi: PythonAnywhere — Python AZBO V2",
+  pyodide: "Mesin Simulasi: Pyodide — Python AZBO V2 di Browser",
+};
+
+export function getAzboExecutionEngineLabel(engine: AzboExecutionEngine): string {
+  return AZBO_EXECUTION_ENGINE_LABELS[engine] || AZBO_EXECUTION_ENGINE_LABELS.pythonanywhere;
+}
+
+export type AzboServerFailureReason =
+  | "unavailable"
+  | "busy"
+  | "job_failed"
+  | "job_lost"
+  | "timeout"
+  | "cancelled";
+
+export class AzboServerEvaluationError extends Error {
+  public readonly reason: AzboServerFailureReason;
+  public readonly canFallbackToPyodide: boolean;
+
+  constructor(
+    message: string,
+    reason: AzboServerFailureReason = "unavailable",
+    canFallbackToPyodide: boolean = true
+  ) {
+    super(message);
+    this.name = "AzboServerEvaluationError";
+    this.reason = reason;
+    this.canFallbackToPyodide = canFallbackToPyodide;
+  }
+}
+
 export interface AzboOptimizationSummary {
+  executionEngine?: AzboExecutionEngine;
+  executionEngineLabel?: string;
   scenario: {
     layout: AircraftLayoutConfig;
     passengerCount: number;
@@ -1293,11 +1337,12 @@ export function computeDeterministicBaggageCount(
 
 /**
  * Memetakan respons JSON dari backend Python AZBO V2 (/api/v2/azbo/optimize atau /api/v2/azbo/jobs)
- * ke struktur AzboOptimizationSummary yang digunakan oleh tampilan Hasil.
+ * maupun dari Pyodide Web Worker ke struktur AzboOptimizationSummary yang digunakan oleh tampilan Hasil.
  */
 export function mapAzboV2ResponseToSummary(
   apiData: any,
-  layout: AircraftLayoutConfig
+  layout: AircraftLayoutConfig,
+  executionEngine?: AzboExecutionEngine
 ): AzboOptimizationSummary {
   if (!apiData || !apiData.recommendation || !apiData.scenario || !apiData.optimization) {
     throw new Error("Format respons dari server simulasi tidak lengkap.");
@@ -1465,7 +1510,13 @@ export function mapAzboV2ResponseToSummary(
       }
     : undefined;
 
-  return {
+  const summary: AzboOptimizationSummary = {
+    ...(executionEngine
+      ? {
+          executionEngine,
+          executionEngineLabel: getAzboExecutionEngineLabel(executionEngine),
+        }
+      : {}),
     scenario: {
       layout,
       passengerCount: paxCount,
@@ -1548,66 +1599,164 @@ export function mapAzboV2ResponseToSummary(
       ],
     },
   };
+
+  return summary;
 }
 
-/**
- * Menjalankan evaluasi dan optimasi AZBO V2 melalui backend Python FastAPI.
- * Tidak pernah menghasilkan angka simulasi buatan apabila backend tidak tersedia.
- */
-export async function runAzboV2EvaluationViaBackend(options: {
+export interface AzboEvaluationOptions {
   layout: AircraftLayoutConfig;
   baggagePercent: number;
   seed?: number;
+  gaPopulation?: number;
+  gaGenerations?: number;
+  trainReps?: number;
+  testReps?: number;
+  engine?: AzboExecutionEngine;
+  apiBaseUrl?: string;
+  signal?: AbortSignal;
+  pollIntervalMs?: number;
+  maxPollCount?: number;
   onProgress?: (message: string, percent: number) => void;
-}): Promise<AzboOptimizationSummary> {
-  const { layout, baggagePercent, seed = BASE_SEED, onProgress } = options;
+}
+
+function buildAzboEvaluationPayload(options: AzboEvaluationOptions) {
+  const {
+    layout,
+    baggagePercent,
+    seed = BASE_SEED,
+    gaPopulation = 14,
+    gaGenerations = 8,
+    trainReps = 3,
+    testReps,
+  } = options;
+
   if (!Number.isFinite(baggagePercent) || baggagePercent < 0 || baggagePercent > 100) {
     throw new Error("Persentase penumpang membawa bagasi harus berada antara 0% hingga 100%.");
   }
 
-  const payload = {
+  const resolvedTestReps = (() => {
+    if (typeof testReps === "number") {
+      if (!Number.isInteger(testReps) || testReps < 2 || testReps > 200) {
+        throw new Error(
+          "Jumlah replikasi pengujian (test_reps) harus bilangan bulat antara 2 dan 200."
+        );
+      }
+      return testReps;
+    }
+    const configured = Number(import.meta.env?.VITE_AZBO_TEST_REPS ?? "20");
+    if (!Number.isInteger(configured) || configured < 2 || configured > 200) {
+      throw new Error("VITE_AZBO_TEST_REPS harus bilangan bulat antara 2 dan 200.");
+    }
+    return configured;
+  })();
+
+  return {
     layout_id: layout.id,
     layout_name: layout.name,
     rows: layout.nRows,
     left_seats: layout.leftSeats.length,
     right_seats: layout.rightSeats.length,
-    left_letters: layout.leftSeats,
-    right_letters: layout.rightSeats,
+    left_letters: [...layout.leftSeats],
+    right_letters: [...layout.rightSeats],
     row_pitch_m: 0.8,
     cell_m: 0.4,
     bag_ratio: baggagePercent / 100.0,
-    ga_population: 14,
-    ga_generations: 8,
-    train_reps: 3,
-    // Default cepat = eksploratif; atur VITE_AZBO_TEST_REPS=100 untuk audit penelitian.
-    // Maksimum backend 200; parameter diambil dan divalidasi saat build Vite.
-    test_reps: (() => {
-      const configured = Number(import.meta.env.VITE_AZBO_TEST_REPS ?? "20");
-      if (!Number.isInteger(configured) || configured < 2 || configured > 200) {
-        throw new Error("VITE_AZBO_TEST_REPS harus bilangan bulat antara 2 dan 200.");
-      }
-      return configured;
-    })(),
+    ga_population: gaPopulation,
+    ga_generations: gaGenerations,
+    train_reps: trainReps,
+    test_reps: resolvedTestReps,
     seed,
+    dt: 0.25,
     zone_call_overhead_s: 0.0,
   };
+}
 
-  onProgress?.("Menghubungi server simulasi AZBO V2...", 5);
+/**
+ * Menjalankan evaluasi dan optimasi Python AZBO V2 (`backend/app/azbo_core.py`)
+ * secara langsung di browser menggunakan Pyodide 0.27.8 + Web Worker (Mesin Alternatif).
+ */
+export async function runAzboV2EvaluationViaPyodideBrowser(
+  options: AzboEvaluationOptions
+): Promise<AzboOptimizationSummary> {
+  const payload = buildAzboEvaluationPayload(options);
+  options.onProgress?.("Menyiapkan mesin simulasi Python (Pyodide) di browser...", 5);
+  const rawResult = await runAzboV2InBrowserPyodide(payload, options.onProgress);
+  options.onProgress?.("Selesai menyusun rekomendasi boarding.", 100);
+  return mapAzboV2ResponseToSummary(rawResult, options.layout, "pyodide");
+}
 
-  const jobsEndpointUrl = buildAzboV2EndpointUrl("/jobs");
+/**
+ * Menjalankan evaluasi dan optimasi AZBO V2 melalui backend Python FastAPI
+ * (PythonAnywhere sebagai mesin utama: `https://rufluu1234.pythonanywhere.com/api/v2/azbo/*`).
+ *
+ * Langkah eksekusi:
+ * 1. Memeriksa ketersediaan backend melalui `GET /api/v2/azbo/health`.
+ * 2. Mengirimkan konfigurasi simulasi melalui `POST /api/v2/azbo/jobs`.
+ * 3. Mengambil `job_id` dari respons server.
+ * 4. Melakukan polling `GET /api/v2/azbo/jobs/{job_id}` dan menampilkan `progress_percent`
+ *    serta `progress_message` asli dari server.
+ * 5. Menggunakan `result` asli saat status `completed`, atau melempar `AzboServerEvaluationError`
+ *    yang jelas jika server tidak tersedia, sibuk, gagal, atau kehilangan pekerjaan.
+ * 6. Tidak pernah diam-diam berpindah ke Pyodide dan tidak pernah membuat angka simulasi palsu.
+ */
+export async function runAzboV2EvaluationViaFastApiServer(
+  options: AzboEvaluationOptions
+): Promise<AzboOptimizationSummary> {
+  const {
+    layout,
+    apiBaseUrl,
+    signal,
+    pollIntervalMs = 1000,
+    maxPollCount = 900,
+    onProgress,
+  } = options;
+  const payload = buildAzboEvaluationPayload(options);
+
+  if (signal?.aborted) {
+    throw new AzboServerEvaluationError(
+      "Pekerjaan simulasi dibatalkan.",
+      "cancelled",
+      false
+    );
+  }
+
+  onProgress?.("Memeriksa ketersediaan server simulasi PythonAnywhere...", 3);
+
+  const health = await checkAzboV2Health(apiBaseUrl, 8000, signal);
+  if (!health.online) {
+    throw new AzboServerEvaluationError(
+      "Server simulasi sedang tidak tersedia. Anda dapat mencoba menjalankan simulasi langsung di perangkat ini.",
+      "unavailable",
+      true
+    );
+  }
+
+  onProgress?.("Mengirim konfigurasi simulasi ke server PythonAnywhere...", 5);
+
+  const jobsEndpointUrl = buildAzboV2EndpointUrl("/jobs", apiBaseUrl);
   let startRes: Response;
   try {
     startRes = await fetch(jobsEndpointUrl, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
     });
-  } catch {
-    throw new Error(
-      "Server simulasi Python sedang tidak tersedia atau belum terhubung. Jika Anda membuka aplikasi pada layanan hosting statis (seperti GitHub Pages), pastikan layanan backend FastAPI aktif dan alamat HTTPS backend telah diatur pada VITE_API_BASE_URL."
+  } catch (err: any) {
+    if (err?.name === "AbortError" || signal?.aborted) {
+      throw new AzboServerEvaluationError(
+        "Permintaan simulasi dibatalkan.",
+        "cancelled",
+        false
+      );
+    }
+    throw new AzboServerEvaluationError(
+      "Server simulasi sedang tidak tersedia. Anda dapat mencoba menjalankan simulasi langsung di perangkat ini.",
+      "unavailable",
+      true
     );
   }
 
@@ -1621,29 +1770,45 @@ export async function runAzboV2EvaluationViaBackend(options: {
     } catch {
       // ignore
     }
-    if (!detail && (startRes.status === 404 || startRes.status === 405)) {
-      throw new Error(
-        "Layanan backend simulasi Python belum terhubung pada alamat ini (HTTP " +
-          startRes.status +
-          "). Pastikan server FastAPI berjalan dan variabel lingkungan VITE_API_BASE_URL mengarah ke URL HTTPS backend."
+    if (startRes.status === 429 || startRes.status === 503) {
+      throw new AzboServerEvaluationError(
+        detail ||
+          "Server simulasi PythonAnywhere sedang sibuk menangani pekerjaan lain. Silakan tunggu beberapa saat atau jalankan simulasi langsung di perangkat ini menggunakan Pyodide.",
+        "busy",
+        true
       );
     }
-    throw new Error(
+    if (!detail && (startRes.status === 404 || startRes.status === 405 || startRes.status >= 500)) {
+      throw new AzboServerEvaluationError(
+        "Server simulasi sedang tidak tersedia. Anda dapat mencoba menjalankan simulasi langsung di perangkat ini.",
+        "unavailable",
+        true
+      );
+    }
+    throw new AzboServerEvaluationError(
       detail ||
-        `Server simulasi gagal memproses permintaan (kode status ${startRes.status}).`
+        `Server simulasi gagal memproses permintaan (kode status ${startRes.status}).`,
+      "job_failed",
+      true
     );
   }
 
   if (!isJsonContentType(startRes.headers.get("content-type"))) {
-    throw new Error(
-      "Layanan backend simulasi Python belum terhubung (server mengembalikan halaman statis HTML, bukan respons JSON API). Untuk deployment produksi seperti GitHub Pages, atur VITE_API_BASE_URL ke URL HTTPS backend FastAPI."
+    throw new AzboServerEvaluationError(
+      "Server simulasi sedang tidak tersedia. Anda dapat mencoba menjalankan simulasi langsung di perangkat ini.",
+      "unavailable",
+      true
     );
   }
 
   const startData = await startRes.json();
   const jobId = startData?.job_id;
   if (!jobId) {
-    throw new Error("Server simulasi tidak mengembalikan ID pekerjaan yang valid.");
+    throw new AzboServerEvaluationError(
+      "Server simulasi tidak mengembalikan ID pekerjaan yang valid.",
+      "job_failed",
+      true
+    );
   }
 
   onProgress?.(
@@ -1652,34 +1817,81 @@ export async function runAzboV2EvaluationViaBackend(options: {
   );
 
   // Poll status pekerjaan hingga selesai
-  // Replikasi penelitian 100x pada 12 metode dapat memerlukan waktu >60 detik.
-  // Polling tidak boleh menyatakan simulasi gagal hanya karena batas lama 60 detik.
-  const maxPolls = 900; // sampai ~15 menit, tanpa memutus job Python yang masih berjalan
-  for (let i = 0; i < maxPolls; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  for (let i = 0; i < maxPollCount; i++) {
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, pollIntervalMs);
+      if (signal) {
+        const onAbort = () => {
+          clearTimeout(t);
+          reject(
+            new AzboServerEvaluationError(
+              "Polling simulasi dibatalkan.",
+              "cancelled",
+              false
+            )
+          );
+        };
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    });
+
     let pollRes: Response;
     try {
       pollRes = await fetch(
-        buildAzboV2EndpointUrl(`/jobs/${encodeURIComponent(jobId)}`),
+        buildAzboV2EndpointUrl(`/jobs/${encodeURIComponent(jobId)}`, apiBaseUrl),
         {
+          signal,
           headers: { Accept: "application/json" },
         }
       );
-    } catch {
-      throw new Error(
-        "Koneksi ke server simulasi Python terputus saat perhitungan sedang berjalan."
+    } catch (err: any) {
+      if (err?.name === "AbortError" || signal?.aborted) {
+        throw new AzboServerEvaluationError(
+          "Polling simulasi dibatalkan.",
+          "cancelled",
+          false
+        );
+      }
+      throw new AzboServerEvaluationError(
+        "Koneksi ke server simulasi PythonAnywhere terputus saat perhitungan sedang berjalan. Anda dapat mencoba kembali atau menjalankan simulasi menggunakan Pyodide di perangkat ini.",
+        "unavailable",
+        true
+      );
+    }
+
+    if (pollRes.status === 404) {
+      throw new AzboServerEvaluationError(
+        "Pekerjaan simulasi tidak lagi ditemukan di server (proses server kemungkinan dimulai ulang karena batas sumber daya PythonAnywhere). Anda dapat mencoba kembali atau menjalankan simulasi menggunakan Pyodide di perangkat ini.",
+        "job_lost",
+        true
+      );
+    }
+
+    if (pollRes.status === 429 || pollRes.status === 503) {
+      throw new AzboServerEvaluationError(
+        "Server simulasi PythonAnywhere sedang sibuk atau melewati batas waktu respons. Anda dapat mencoba kembali atau menjalankan simulasi menggunakan Pyodide di perangkat ini.",
+        "busy",
+        true
       );
     }
 
     if (!pollRes.ok) {
-      throw new Error(
-        `Gagal memeriksa status simulasi dari server (kode ${pollRes.status}).`
+      throw new AzboServerEvaluationError(
+        `Gagal memeriksa status simulasi dari server (kode ${pollRes.status}).`,
+        "job_failed",
+        true
       );
     }
 
     if (!isJsonContentType(pollRes.headers.get("content-type"))) {
-      throw new Error(
-        "Respons status simulasi bukan format JSON dari server backend Python."
+      throw new AzboServerEvaluationError(
+        "Respons status simulasi bukan format JSON dari server backend Python.",
+        "unavailable",
+        true
       );
     }
 
@@ -1693,19 +1905,43 @@ export async function runAzboV2EvaluationViaBackend(options: {
 
     if (pollData.status === "completed" && pollData.result) {
       onProgress?.("Selesai menyusun rekomendasi boarding.", 100);
-      return mapAzboV2ResponseToSummary(pollData.result, layout);
+      return mapAzboV2ResponseToSummary(pollData.result, layout, "pythonanywhere");
     }
 
     if (pollData.status === "failed" || pollData.status === "cancelled") {
-      throw new Error(
-        pollData.error_message || "Perhitungan simulasi di server gagal atau dibatalkan."
+      throw new AzboServerEvaluationError(
+        pollData.error_message ||
+          pollData.error ||
+          "Perhitungan simulasi di server gagal atau dibatalkan.",
+        "job_failed",
+        true
       );
     }
   }
 
-  throw new Error(
-    "Waktu tunggu perhitungan simulasi habis. Silakan coba jalankan simulasi kembali."
+  throw new AzboServerEvaluationError(
+    "Waktu tunggu perhitungan simulasi di server habis. Anda dapat mencoba kembali atau menjalankan simulasi menggunakan Pyodide di perangkat ini.",
+    "timeout",
+    true
   );
+}
+
+/**
+ * Fungsi gerbang utama evaluasi AZBO V2 pada frontend ZoneFlow:
+ * - Default (`engine = "pythonanywhere"`): Menjalankan simulasi melalui backend utama
+ *   PythonAnywhere FastAPI (`runAzboV2EvaluationViaFastApiServer`).
+ * - Alternatif eksplisit (`engine = "pyodide"`): Menjalankan kode `backend/app/azbo_core.py`
+ *   yang sama persis di dalam browser melalui Pyodide + Web Worker (`runAzboV2EvaluationViaPyodideBrowser`).
+ * - Tidak pernah diam-diam memindahkan pekerjaan dari PythonAnywhere ke Pyodide tanpa persetujuan pengguna.
+ */
+export async function runAzboV2EvaluationViaBackend(
+  options: AzboEvaluationOptions
+): Promise<AzboOptimizationSummary> {
+  const targetEngine: AzboExecutionEngine = options.engine ?? "pythonanywhere";
+  if (targetEngine === "pyodide") {
+    return runAzboV2EvaluationViaPyodideBrowser(options);
+  }
+  return runAzboV2EvaluationViaFastApiServer(options);
 }
 
 /**

@@ -698,4 +698,485 @@ test("mapAzboV2ResponseToSummary maps v19 optimization validity audit metadata (
   );
 });
 
+test("PythonAnywhere VITE_API_BASE_URL resolves to /api/v2/azbo/* without duplicating /api/v1", async () => {
+  const {
+    DEFAULT_PYTHONANYWHERE_API_BASE_URL,
+    resolveApiV1BaseUrl,
+    resolveAzboV2BaseUrl,
+    buildAzboV2EndpointUrl,
+  } = await import("../services/apiClient");
+
+  assert.equal(
+    DEFAULT_PYTHONANYWHERE_API_BASE_URL,
+    "https://rufluu1234.pythonanywhere.com/api/v1"
+  );
+  assert.equal(
+    resolveApiV1BaseUrl("https://rufluu1234.pythonanywhere.com/api/v1"),
+    "https://rufluu1234.pythonanywhere.com/api/v1"
+  );
+  assert.equal(
+    resolveAzboV2BaseUrl("https://rufluu1234.pythonanywhere.com/api/v1"),
+    "https://rufluu1234.pythonanywhere.com/api/v2/azbo"
+  );
+  assert.equal(
+    resolveAzboV2BaseUrl("https://rufluu1234.pythonanywhere.com"),
+    "https://rufluu1234.pythonanywhere.com/api/v2/azbo"
+  );
+  assert.equal(
+    resolveAzboV2BaseUrl("https://rufluu1234.pythonanywhere.com/api/v2/azbo"),
+    "https://rufluu1234.pythonanywhere.com/api/v2/azbo"
+  );
+
+  const healthUrl = buildAzboV2EndpointUrl(
+    "/health",
+    "https://rufluu1234.pythonanywhere.com/api/v1"
+  );
+  const jobsUrl = buildAzboV2EndpointUrl(
+    "/jobs",
+    "https://rufluu1234.pythonanywhere.com/api/v1"
+  );
+  const jobPollUrl = buildAzboV2EndpointUrl(
+    "/jobs/job123",
+    "https://rufluu1234.pythonanywhere.com/api/v1"
+  );
+
+  assert.equal(healthUrl, "https://rufluu1234.pythonanywhere.com/api/v2/azbo/health");
+  assert.equal(jobsUrl, "https://rufluu1234.pythonanywhere.com/api/v2/azbo/jobs");
+  assert.equal(
+    jobPollUrl,
+    "https://rufluu1234.pythonanywhere.com/api/v2/azbo/jobs/job123"
+  );
+  assert.ok(!jobsUrl.includes("/api/v1/api/v2/azbo/jobs"));
+  assert.ok(!jobsUrl.includes("raflirustandy6-max.github.io"));
+});
+
+test("runAzboV2EvaluationViaFastApiServer executes health -> POST /jobs -> poll GET /jobs/{id} -> completed", async () => {
+  const { runAzboV2EvaluationViaFastApiServer, getAzboExecutionEngineLabel } =
+    await import("./engine");
+  const layout = AIRCRAFT_LAYOUTS[1]; // ATR 72-600
+  const originalFetch = globalThis.fetch;
+
+  const calledUrls: string[] = [];
+  let pollCounter = 0;
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    calledUrls.push(`${init?.method || "GET"} ${url}`);
+
+    if (url.endsWith("/api/v2/azbo/health")) {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          engine: "AZBO_V2_SINGLE_AISLE_CELL_SIMULATOR",
+          strategies: ["ZONE", "WMA", "BTF", "RANDOM"],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (url.endsWith("/api/v2/azbo/jobs") && init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          job_id: "test_job_001",
+          status: "queued",
+          progress_percent: 2.0,
+          progress_message: "Menyiapkan evaluasi AZBO V2...",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (url.endsWith("/api/v2/azbo/jobs/test_job_001")) {
+      pollCounter += 1;
+      if (pollCounter === 1) {
+        return new Response(
+          JSON.stringify({
+            job_id: "test_job_001",
+            status: "running",
+            progress_percent: 48.0,
+            progress_message: "Menjalankan Genetic Algorithm variabel-K...",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          job_id: "test_job_001",
+          status: "completed",
+          progress_percent: 100.0,
+          progress_message: "Selesai.",
+          result: {
+            scenario: {
+              layout_id: layout.id,
+              layout_name: layout.name,
+              rows: 18,
+              left_seats: 2,
+              right_seats: 2,
+              seats_per_row: 4,
+              capacity: 72,
+              occupancy_rate: 1.0,
+              passenger_count: 72,
+              bag_ratio: 0.7,
+              baggage_percent: 70,
+              baggage_passenger_count: 50,
+              without_baggage_count: 22,
+              row_pitch_m: 0.8,
+              cell_m: 0.4,
+              cells_per_row: 2,
+              total_cells: 36,
+              dt_s: 0.25,
+              zone_call_overhead_s: 0.0,
+              seed: 20261021,
+              train_reps: 2,
+              test_reps: 5,
+            },
+            optimization: {
+              k_zones: 3,
+              cut_rows: [6, 12],
+              zone_ranges: [
+                [1, 6],
+                [7, 12],
+                [13, 18],
+              ],
+              zone_sizes: [6, 6, 6],
+              zone_order: [3, 2, 1],
+              in_zone_rule: "WMA_IN_ZONE",
+              best_training_fitness_s: 310.0,
+              explored_k_values: [1, 2, 3],
+              unique_candidates_evaluated: 25,
+              ga_population: 8,
+              ga_generations: 4,
+              fitness_history: [],
+            },
+            recommendation: {
+              winner_by_sample_mean: "STEFFEN",
+              winner_short_label: "Metode Steffen (Urutan Kursi Berselang-seling)",
+              winner_category: "Urutan Kursi Berselang-seling",
+              mean_s: 295.0,
+              sd_s: 8.5,
+              approx_95ci_s: [290.0, 300.0],
+              mean_min: 4.92,
+              sd_min: 0.14,
+              calling_steps: ["Tahap 1 — Kursi Jendela"],
+              zone_config: null,
+              evaluated_strategies: [
+                {
+                  rank: 1,
+                  strategy_id: "STEFFEN",
+                  short_label: "Metode Steffen (Urutan Kursi Berselang-seling)",
+                  category: "Urutan Kursi Berselang-seling",
+                  mean_s: 295.0,
+                  sd_s: 8.5,
+                  ci95_low_s: 290.0,
+                  ci95_high_s: 300.0,
+                  min_s: 284.0,
+                  max_s: 306.0,
+                  mean_min: 4.92,
+                  sd_min: 0.14,
+                  mean_aisle_interference_events: 12,
+                  mean_seat_interference_events: 0,
+                  zone_config: null,
+                  calling_steps: ["Tahap 1 — Kursi Jendela"],
+                  diff_from_best_s: 0.0,
+                  diff_from_best_pct: 0.0,
+                  paired_diff_sd_s: 0.0,
+                  paired_diff_ci95_s: [0.0, 0.0],
+                },
+              ],
+              paired_comparisons: [],
+              equivalent_methods: [],
+              disclaimer: "Estimasi model simulasi.",
+            },
+            animation: {
+              strategy_id: "STEFFEN",
+              strategy_label: "Metode Steffen (Urutan Kursi Berselang-seling)",
+              replication_seed: 70261021,
+              boarding_time_s: 294.5,
+              metrics: {
+                boarding_time_seconds: 294.5,
+                boarding_time_minutes: 4.908,
+                aisle_interference_events: 12,
+                aggregate_aisle_wait_person_seconds: 45.0,
+                aisle_wait_seconds: 45.0,
+                seat_interference_events: 0,
+                occupied_blocker_count: 0,
+                baggage_count: 50,
+                passenger_count: 72,
+              },
+              timeline_details: [],
+              trace: [],
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    throw new Error(`Unexpected URL: ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const progressUpdates: Array<{ msg: string; pct: number }> = [];
+    const summary = await runAzboV2EvaluationViaFastApiServer({
+      layout,
+      baggagePercent: 70,
+      seed: 20261021,
+      onProgress: (msg, pct) => progressUpdates.push({ msg, pct }),
+    });
+
+    assert.equal(summary.executionEngine, "pythonanywhere");
+    assert.equal(
+      summary.executionEngineLabel,
+      getAzboExecutionEngineLabel("pythonanywhere")
+    );
+    assert.equal(summary.recommendedMethod.methodName, "STEFFEN");
+    assert.ok(
+      calledUrls.includes(
+        "GET https://rufluu1234.pythonanywhere.com/api/v2/azbo/health"
+      )
+    );
+    assert.ok(
+      calledUrls.includes(
+        "POST https://rufluu1234.pythonanywhere.com/api/v2/azbo/jobs"
+      )
+    );
+    assert.ok(
+      calledUrls.includes(
+        "GET https://rufluu1234.pythonanywhere.com/api/v2/azbo/jobs/test_job_001"
+      )
+    );
+    assert.ok(progressUpdates.some((p) => p.pct === 48));
+    assert.ok(progressUpdates.some((p) => p.pct === 100));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("runAzboV2EvaluationViaFastApiServer handles server unavailable, failed job, and 404 lost job without silent Pyodide fallback", async () => {
+  const {
+    runAzboV2EvaluationViaFastApiServer,
+    runAzboV2EvaluationViaBackend,
+    AzboServerEvaluationError,
+  } = await import("./engine");
+  const layout = AIRCRAFT_LAYOUTS[1];
+  const originalFetch = globalThis.fetch;
+
+  try {
+    // 1. Server unavailable on /health -> throws AzboServerEvaluationError("unavailable") and does NOT auto-run Pyodide
+    globalThis.fetch = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as typeof fetch;
+
+    await assert.rejects(
+      async () => {
+        await runAzboV2EvaluationViaBackend({
+          layout,
+          baggagePercent: 70,
+          seed: 20261021,
+          engine: "pythonanywhere",
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof AzboServerEvaluationError);
+        assert.equal(err.reason, "unavailable");
+        assert.equal(err.canFallbackToPyodide, true);
+        assert.equal(
+          err.message,
+          "Server simulasi sedang tidak tersedia. Anda dapat mencoba menjalankan simulasi langsung di perangkat ini."
+        );
+        return true;
+      }
+    );
+
+    const jsonHeaders = { "Content-Type": "application/json" };
+    const validHealthBody = JSON.stringify({
+      status: "online",
+      engine: "ZoneFlow-AZBO-V2-Cellular-Discrete-Event",
+      version: "2.0.0",
+      supported_strategies: ["ZONE", "WMA", "BTF", "RANDOM"],
+    });
+
+    // 2. Job status "failed" from server -> throws AzboServerEvaluationError("job_failed")
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v2/azbo/health")) {
+        return new Response(validHealthBody, { status: 200, headers: jsonHeaders });
+      }
+      if (url.endsWith("/api/v2/azbo/jobs") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            job_id: "job_fail_01",
+            status: "queued",
+            progress_percent: 2,
+            progress_message: "Queued",
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          job_id: "job_fail_01",
+          status: "failed",
+          progress_percent: 20,
+          progress_message: "Gagal",
+          error: "Simulasi gagal di tengah jalan karena batas waktu worker.",
+        }),
+        { status: 200, headers: jsonHeaders }
+      );
+    }) as typeof fetch;
+
+    await assert.rejects(
+      async () => {
+        await runAzboV2EvaluationViaFastApiServer({
+          layout,
+          baggagePercent: 70,
+          seed: 20261021,
+          pollIntervalMs: 10,
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof AzboServerEvaluationError);
+        assert.equal(err.reason, "job_failed");
+        assert.equal(err.canFallbackToPyodide, true);
+        assert.ok(err.message.includes("batas waktu worker"));
+        return true;
+      }
+    );
+
+    // 3. Job lost (HTTP 404 during polling) -> throws AzboServerEvaluationError("job_lost")
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v2/azbo/health")) {
+        return new Response(validHealthBody, { status: 200, headers: jsonHeaders });
+      }
+      if (url.endsWith("/api/v2/azbo/jobs") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            job_id: "job_lost_404",
+            status: "queued",
+            progress_percent: 2,
+            progress_message: "Queued",
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      return new Response(JSON.stringify({ detail: "Job not found" }), {
+        status: 404,
+        headers: jsonHeaders,
+      });
+    }) as typeof fetch;
+
+    await assert.rejects(
+      async () => {
+        await runAzboV2EvaluationViaFastApiServer({
+          layout,
+          baggagePercent: 70,
+          seed: 20261021,
+          pollIntervalMs: 10,
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof AzboServerEvaluationError);
+        assert.equal(err.reason, "job_lost");
+        assert.equal(err.canFallbackToPyodide, true);
+        assert.ok(
+          err.message.includes("Pekerjaan simulasi tidak lagi ditemukan di server")
+        );
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Live PythonAnywhere smoke test: health check, CORS preflight, and 32-passenger job execution", async () => {
+  const { checkAzboV2Health, buildAzboV2EndpointUrl } = await import(
+    "../services/apiClient"
+  );
+
+  // 1. Health check
+  const health = await checkAzboV2Health(
+    "https://rufluu1234.pythonanywhere.com/api/v1",
+    10000
+  );
+  assert.equal(health.ok, true);
+  assert.equal(health.status, 200);
+  assert.equal(health.strategies.length, 12);
+
+  // 2. CORS preflight for GitHub Pages origin
+  const jobsUrl = buildAzboV2EndpointUrl(
+    "/jobs",
+    "https://rufluu1234.pythonanywhere.com/api/v1"
+  );
+  const preflightRes = await fetch(jobsUrl, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://raflirustandy6-max.github.io",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.equal(preflightRes.status, 200);
+  assert.equal(
+    preflightRes.headers.get("access-control-allow-origin"),
+    "https://raflirustandy6-max.github.io"
+  );
+
+  // 3. Submit small 32-passenger (8 rows, 2-2) simulation job and poll until completed
+  const startRes = await fetch(jobsUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "https://raflirustandy6-max.github.io",
+    },
+    body: JSON.stringify({
+      rows: 8,
+      left_seats: 2,
+      right_seats: 2,
+      baggage_Search_pct: 70.0,
+      baggage_pct: 70.0,
+      seed: 20261029,
+      train_reps: 2,
+      test_reps: 3,
+      ga_population: 6,
+      ga_generations: 3,
+    }),
+  });
+  assert.equal(startRes.status, 200);
+  const startPayload = (await startRes.json()) as {
+    job_id: string;
+    status: string;
+  };
+  assert.ok(startPayload.job_id);
+
+  let finalJobPayload: Record<string, unknown> | null = null;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    const pollUrl = buildAzboV2EndpointUrl(
+      `/jobs/${encodeURIComponent(startPayload.job_id)}`,
+      "https://rufluu1234.pythonanywhere.com/api/v1"
+    );
+    const pollRes = await fetch(pollUrl, {
+      headers: { Origin: "https://raflirustandy6-max.github.io" },
+    });
+    assert.equal(pollRes.status, 200);
+    const pollData = (await pollRes.json()) as Record<string, unknown>;
+    if (pollData.status === "completed") {
+      finalJobPayload = pollData;
+      break;
+    }
+    assert.notEqual(pollData.status, "failed");
+  }
+
+  assert.ok(finalJobPayload, "PythonAnywhere job should complete within polling window");
+  const resultObj = finalJobPayload.result as Record<string, unknown>;
+  const scenarioObj = resultObj.scenario as Record<string, unknown>;
+  const recObj = resultObj.recommendation as Record<string, unknown>;
+  assert.equal(scenarioObj.passenger_count, 32);
+  assert.equal((recObj.evaluated_strategies as unknown[]).length, 12);
+});
+
+
 

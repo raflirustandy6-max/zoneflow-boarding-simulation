@@ -27,6 +27,11 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
@@ -35,17 +40,29 @@ jobs:
           npm install --global npm@11.21.1
           node --version
           npm --version
+          python3 --version
 
-      - name: Install dependencies
+      - name: Install Python test dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install fastapi pydantic httpx
+
+      - name: Install frontend dependencies
         run: npm ci
 
       - name: Lint frontend
         run: npm run lint
 
-      - name: Run frontend unit tests
-        run: npx tsx src/simulation/engine.test.ts
+      - name: Run Python AZBO V2 backend tests
+        run: PYTHONPATH=backend python3 -m unittest discover -s backend/tests -v
 
-      - name: Build frontend
+      - name: Run frontend unit, integration, and Pyodide equivalence tests
+        run: npx tsx --test src/simulation/azboV2.test.ts src/simulation/engine.test.ts src/simulation/pyodideEquivalence.test.ts
+
+      - name: Build frontend for GitHub Pages
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://rufluu1234.pythonanywhere.com/api/v1' }}
+          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL || '' }}
         run: npm run build
 
       - name: Upload artifact
